@@ -1,0 +1,403 @@
+<style>
+  /* ==========================================================================
+     TEMA ELEGAN MODERN BIRU - SISTEM ABSENSI GURU & REKAPITULASI
+     ========================================================================== */
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --primary-blue: #2563eb;
+    --primary-dark: #1e3a8a;
+    --primary-hover: #1d4ed8;
+    --primary-subtle: #eff6ff;
+    --accent-cyan: #0284c7;
+    --accent-teal: #0d9488;
+    --slate-bg: #f8fafc;
+    --card-border: #e2e8f0;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background: linear-gradient(180deg, #f0f7ff 0%, #f8fafc 180px, #f1f5f9 100%);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text-main);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+
+  /* Header */
+  .brand-header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 20px -2px rgba(30, 58, 138, 0.25);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .logo-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  }
+  .logo-box img {
+    max-width: 36px;
+    max-height: 36px;
+    object-fit: contain;
+  }
+
+  .login-logo {
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 12px auto;
+    background: #ffffff;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.3);
+  }
+  .login-logo img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  /* Card */
+  .card-app {
+    background: #ffffff;
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-app:hover {
+    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.08);
+  }
+
+  /* Navigation Pills (Mobile friendly) */
+  .nav-pills-custom {
+    display: flex;
+    gap: 8px;
+    background: #f1f5f9;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-pills-custom::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-pills-custom .nav-link {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 10px;
+    padding: 8px 16px;
+    white-space: nowrap;
+    border: none;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .nav-pills-custom .nav-link:hover {
+    color: var(--primary-blue);
+    background: rgba(255, 255, 255, 0.6);
+  }
+  .nav-pills-custom .nav-link.active {
+    background: #ffffff;
+    color: var(--primary-blue);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Form Elements */
+  .form-control, .form-select {
+    border-radius: 10px;
+    border: 1.5px solid #cbd5e1;
+    padding: 9px 14px;
+    font-size: 0.925rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .form-control:focus, .form-select:focus {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3.5px rgba(37, 99, 235, 0.15);
+  }
+
+  /* Multi-Class Item Box */
+  .kelas-item-box {
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-left: 5px solid var(--primary-blue);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  }
+
+  /* File Upload Area */
+  .upload-dropzone {
+    border: 2px dashed #93c5fd;
+    border-radius: 14px;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    background-color: #f8fafc;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .upload-dropzone:hover, .upload-dropzone.dragover {
+    border-color: var(--primary-blue);
+    background-color: var(--primary-subtle);
+  }
+  .file-preview-card {
+    background: #eff6ff;
+    border: 1.5px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Buttons */
+  .btn-primary-custom {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 9px 18px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary-custom:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+    color: #ffffff;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-success-custom {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 9px 18px;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.2);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-success-custom:hover {
+    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  /* Badges */
+  .badge-status {
+    font-size: 0.775rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    display: inline-block;
+  }
+  .badge-sakit { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .badge-izin { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  .badge-tugas { background-color: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+  .badge-alpa { background-color: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+
+  /* Stat Card */
+  .stat-card-blue {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .stat-card-blue .stat-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-top: 4px;
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .card-app { padding: 16px !important; }
+    .table-rekap th, .table-rekap td { font-size: 0.8rem; padding: 8px 10px; }
+  }
+
+  /* ==========================================================================
+     DEDICATED PRINT STYLESHEET (@media print)
+     ========================================================================== */
+  #printArea {
+    display: none;
+  }
+
+  @media print {
+    html, body {
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      font-size: 11pt !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    body * {
+      visibility: hidden !important;
+    }
+
+    #printArea, #printArea * {
+      visibility: visible !important;
+    }
+
+    #printArea {
+      display: block !important;
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 15mm 15mm !important;
+      background: #ffffff !important;
+    }
+
+    .no-print, header, nav, .btn, .card-header, #viewLogin, #viewDashboard, .nav-pills-custom, .alert, .modal {
+      display: none !important;
+    }
+
+    .print-kop {
+      border-bottom: 2.5px solid #000000;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .print-kop h2 {
+      font-size: 15pt !important;
+      font-weight: bold !important;
+      margin: 0 0 4px 0 !important;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .print-kop h3 {
+      font-size: 12pt !important;
+      font-weight: bold !important;
+      margin: 0 0 4px 0 !important;
+    }
+    .print-kop p {
+      font-size: 9pt !important;
+      margin: 0 !important;
+      color: #333333;
+    }
+
+    .print-meta-box {
+      margin-bottom: 12px;
+      font-size: 9.5pt;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .print-stat-box {
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      border: 1px solid #999999;
+      font-size: 9.5pt;
+      display: flex;
+      justify-content: space-around;
+      background-color: #f9f9f9;
+    }
+
+    table.print-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      margin-bottom: 20px !important;
+      font-size: 8.5pt !important;
+    }
+    table.print-table th, table.print-table td {
+      border: 1px solid #000000 !important;
+      padding: 5px 6px !important;
+      vertical-align: top !important;
+    }
+    table.print-table th {
+      background-color: #eeeeee !important;
+      font-weight: bold !important;
+      text-align: center !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table.print-table td.center {
+      text-align: center !important;
+    }
+
+    .print-signature {
+      margin-top: 25px;
+      display: flex;
+      justify-content: space-between;
+      page-break-inside: avoid;
+      font-size: 9.5pt;
+    }
+    .print-signature .sign-col {
+      width: 44%;
+      text-align: center;
+    }
+    .sign-space {
+      height: 55px;
+    }
+  }
+
+  body {
+    padding-bottom: 50px;
+  }
+
+  .fixed-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+    background: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-align: center;
+    padding: 9px 16px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+  }
+
+  .table-rekap td {
+    vertical-align: top;
+  }
+  .table-rekap td.merged-cell {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+  }
+</style>

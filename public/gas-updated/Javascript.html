@@ -1,0 +1,1483 @@
+<script>
+  /**
+   * =========================================================================
+   * LOGIKA CLIENT-SIDE JAVASCRIPT - SISTEM ABSENSI PEGAWAI
+   * Mendukung 5 Role: ADMIN, PIKET, KEPSEK, GURU, TENDIK
+   * =========================================================================
+   */
+
+  const NO_WA_TUJUAN = "6285779156487";
+  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+  let currentSelectedFile = null;
+  let currentUserSession = null;
+  let currentRekapRecords = [];
+
+  let listSemuaPegawai = [];
+  let listGuru = [];
+  let listKepsek = [];
+  let listTendik = [];
+  let listKelas = [];
+
+  // Target kategori ketika Admin atau Piket melakukan entry
+  let activeTargetCategory = 'guru';
+
+  const listMapel = [
+    "Pendidikan Agama Islam dan Budi Pekerti", "Pendidikan Pancasila", "Bahasa Indonesia",
+    "Matematika", "Ilmu Pengetahuan Alam", "Ilmu Pengetahuan Sosial", "Bahasa Inggris",
+    "Pendidikan Seni dan Prakarya", "Pendidikan Jasmani Olahraga dan Kesehatan", "Informatika", "Bahasa Sunda", "Bimbingan Konseling"
+  ];
+
+  document.addEventListener("DOMContentLoaded", function() {
+    const now = new Date();
+    const tglInput = document.getElementById('tanggal');
+    if (tglInput) {
+      tglInput.valueAsDate = now;
+      handleTanggalChange();
+    }
+
+    const rekapHarian = document.getElementById('rekapTglHarian');
+    if (rekapHarian) rekapHarian.valueAsDate = now;
+
+    const rekapMulai = document.getElementById('rekapTglMulai');
+    if (rekapMulai) rekapMulai.valueAsDate = now;
+
+    const rekapSelesai = document.getElementById('rekapTglSelesai');
+    if (rekapSelesai) rekapSelesai.valueAsDate = now;
+
+    const rekapBulan = document.getElementById('rekapBulan');
+    if (rekapBulan) rekapBulan.value = (now.getMonth() + 1).toString();
+
+    const rekapTahun = document.getElementById('rekapTahun');
+    if (rekapTahun) rekapTahun.value = now.getFullYear().toString();
+
+    const savedUser = sessionStorage.getItem("presensi_pegawai_v3") || localStorage.getItem("presensi_pegawai_v3");
+    if (savedUser) {
+      try {
+        currentUserSession = JSON.parse(savedUser);
+        tampilkanDashboard();
+      } catch (e) {
+        tampilkanLogin();
+      }
+    } else {
+      tampilkanLogin();
+    }
+
+    inisialisasiDragAndDrop();
+  });
+
+  /**
+   * Syarat 2: Otomatisasi Nama Hari berdasarkan Tanggal yang dipilih (contoh: 23 Oktober 2026 -> Jum'at)
+   */
+  function handleTanggalChange() {
+    const tglEl = document.getElementById("tanggal");
+    const hariEl = document.getElementById("hari");
+    if (!tglEl || !hariEl) return;
+    const val = tglEl.value;
+    if (!val) {
+      hariEl.value = "-";
+      return;
+    }
+    const parts = val.split("-");
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      const arrHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu"];
+      hariEl.value = arrHari[d.getDay()] || "Senin";
+    }
+  }
+
+  function togglePasswordVisibility() {
+    const pass = document.getElementById("passwordInput");
+    const icon = document.getElementById("eyeIcon");
+    if (pass.type === "password") {
+      pass.type = "text";
+      icon.className = "bi bi-eye-slash";
+    } else {
+      pass.type = "password";
+      icon.className = "bi bi-eye";
+    }
+  }
+
+  function handleLoginSubmit(event) {
+    event.preventDefault();
+    const username = document.getElementById("usernameInput").value.trim();
+    const password = document.getElementById("passwordInput").value.trim();
+    const alertBox = document.getElementById("alertLogin");
+    const btnLogin = document.getElementById("btnLogin");
+
+    if (!username || !password) {
+      alertBox.className = "alert alert-warning py-2 small";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Masukkan username dan password!";
+      alertBox.classList.remove("d-none");
+      return;
+    }
+
+    btnLogin.disabled = true;
+    btnLogin.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Verifikasi...";
+    alertBox.classList.add("d-none");
+
+    google.script.run
+      .withSuccessHandler(function(response) {
+        btnLogin.disabled = false;
+        btnLogin.innerHTML = "<i class='bi bi-box-arrow-in-right me-2'></i> Masuk ke Sistem";
+
+        if (response && response.success) {
+          currentUserSession = response.user;
+          sessionStorage.setItem("presensi_pegawai_v3", JSON.stringify(currentUserSession));
+          tampilkanDashboard();
+        } else {
+          alertBox.className = "alert alert-danger py-2 small";
+          alertBox.innerHTML = "<i class='bi bi-x-circle me-1'></i> " + (response.message || "Login gagal.");
+          alertBox.classList.remove("d-none");
+        }
+      })
+      .withFailureHandler(function(err) {
+        btnLogin.disabled = false;
+        btnLogin.innerHTML = "<i class='bi bi-box-arrow-in-right me-2'></i> Masuk ke Sistem";
+        alertBox.className = "alert alert-danger py-2 small";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-octagon me-1'></i> Terjadi kesalahan: " + err.message;
+        alertBox.classList.remove("d-none");
+      })
+      .loginPengguna(username, password);
+  }
+
+  function tampilkanLogin() {
+    document.getElementById("viewLogin").classList.remove("d-none");
+    document.getElementById("viewDashboard").classList.add("d-none");
+    currentUserSession = null;
+    sessionStorage.removeItem("presensi_pegawai_v3");
+  }
+
+  /**
+   * Menyesuaikan UI sesuai 5 Role Pegawai
+   */
+  function tampilkanDashboard() {
+    document.getElementById("viewLogin").classList.add("d-none");
+    document.getElementById("viewDashboard").classList.remove("d-none");
+
+    const namaSpan = document.getElementById("userDisplayName");
+    const roleBadge = document.getElementById("userRoleBadge");
+    const navItemPassword = document.getElementById("nav-item-password");
+    const boxTargetKat = document.getElementById("boxTargetKategoriAdmin");
+    const boxExport = document.getElementById("boxTombolExportRekap");
+    const optMingguan = document.getElementById("optFilterMingguan");
+    const optBulanan = document.getElementById("optFilterBulanan");
+    const optSemua = document.getElementById("optFilterSemua");
+    const filterTipe = document.getElementById("filterRekapTipe");
+
+    if (currentUserSession) {
+      namaSpan.textContent = currentUserSession.nama || currentUserSession.username;
+      const role = (currentUserSession.role || "").toLowerCase();
+
+      // Badge Role
+      if (role === "admin") {
+        roleBadge.className = "badge bg-primary text-white";
+        roleBadge.innerHTML = "<i class='bi bi-shield-check me-1'></i>Admin";
+      } else if (role === "kepsek") {
+        roleBadge.className = "badge bg-dark text-white";
+        roleBadge.innerHTML = "<i class='bi bi-award-fill me-1'></i>Kepala Sekolah";
+      } else if (role === "piket") {
+        roleBadge.className = "badge bg-secondary text-white";
+        roleBadge.innerHTML = "<i class='bi bi-person-badge me-1'></i>Petugas Piket";
+      } else if (role === "guru") {
+        roleBadge.className = "badge bg-success text-white";
+        roleBadge.innerHTML = "<i class='bi bi-person-video3 me-1'></i>Guru";
+      } else if (role === "tendik") {
+        roleBadge.className = "badge bg-warning text-dark";
+        roleBadge.innerHTML = "<i class='bi bi-people-fill me-1'></i>Tendik";
+      }
+
+      // Syarat 12: Fitur Ganti Password Khusus Role Admin Saja
+      if (role === "admin") {
+        if (navItemPassword) navItemPassword.classList.remove("d-none");
+      } else {
+        if (navItemPassword) navItemPassword.classList.add("d-none");
+      }
+
+      // Syarat 3, 4, 6: Konfigurasi Form Entry
+      const isAdminOrPiket = (role === "admin" || role === "piket");
+      if (isAdminOrPiket) {
+        if (boxTargetKat) boxTargetKat.classList.remove("d-none");
+        document.getElementById("namaPegawaiSelect").classList.remove("d-none");
+        document.getElementById("namaPegawaiFixedBox").classList.add("d-none");
+      } else {
+        if (boxTargetKat) boxTargetKat.classList.add("d-none");
+        document.getElementById("namaPegawaiSelect").classList.add("d-none");
+        document.getElementById("namaPegawaiFixedBox").classList.remove("d-none");
+        document.getElementById("namaPegawaiFixedText").textContent = currentUserSession.nama;
+      }
+
+      // Syarat 4: Penugasan Multi-Kelas HANYA untuk Guru
+      aturTampilanPenugasanKelas(isAdminOrPiket ? activeTargetCategory : role);
+
+      // Syarat 9 & 11: Rekapitulasi & Tombol Export
+      if (isAdminOrPiket) {
+        if (boxExport) boxExport.classList.remove("d-none");
+        if (role === "piket") {
+          // Piket hanya Harian
+          if (optMingguan) optMingguan.classList.add("d-none");
+          if (optBulanan) optBulanan.classList.add("d-none");
+          if (optSemua) optSemua.classList.add("d-none");
+          if (filterTipe) filterTipe.value = "harian";
+          handleFilterTipeChange();
+        } else {
+          // Admin akses semua filter
+          if (optMingguan) optMingguan.classList.remove("d-none");
+          if (optBulanan) optBulanan.classList.remove("d-none");
+          if (optSemua) optSemua.classList.remove("d-none");
+        }
+      } else {
+        // Syarat 11: Kepsek, Guru, Tendik hanya tampil di web (TANPA tombol Cetak PDF & Excel)
+        if (boxExport) boxExport.classList.add("d-none");
+        // Dapat memilih filter harian, mingguan, bulanan untuk data pribadinya
+        if (optMingguan) optMingguan.classList.remove("d-none");
+        if (optBulanan) optBulanan.classList.remove("d-none");
+        if (optSemua) optSemua.classList.remove("d-none");
+      }
+    }
+
+    muatDataMasterSpreadsheet();
+  }
+
+  function handleLogout() {
+    currentUserSession = null;
+    sessionStorage.removeItem("presensi_pegawai_v3");
+    localStorage.removeItem("presensi_pegawai_v3");
+    tampilkanLogin();
+  }
+
+  function aturTampilanPenugasanKelas(targetRole) {
+    const sectionKelas = document.getElementById("sectionPenugasanGuru");
+    const labelNama = document.getElementById("labelNamaPegawai");
+    if (!sectionKelas) return;
+
+    if (targetRole === "guru") {
+      sectionKelas.classList.remove("d-none");
+      if (labelNama) labelNama.textContent = "Nama Guru Pengampu";
+    } else if (targetRole === "kepsek") {
+      sectionKelas.classList.add("d-none");
+      if (labelNama) labelNama.textContent = "Nama Kepala Sekolah";
+    } else {
+      sectionKelas.classList.add("d-none");
+      if (labelNama) labelNama.textContent = "Nama Tenaga Kependidikan (Tendik)";
+    }
+  }
+
+  function handleTargetCategoryChange(kat) {
+    activeTargetCategory = kat;
+    aturTampilanPenugasanKelas(kat);
+    renderDropdownNamaPegawai();
+  }
+
+  function muatDataMasterSpreadsheet() {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          listGuru = res.daftarGuru || [];
+          listKepsek = res.daftarKepsek || [];
+          listTendik = res.daftarTendik || [];
+          listSemuaPegawai = res.semuaPegawai || [];
+          listKelas = res.daftarKelas || [];
+
+          renderDropdownNamaPegawai();
+          renderSemuaDropdownKelas();
+          renderDropdownGantiPassword();
+
+          // Inisialisasi container kelas jika kosong
+          const container = document.getElementById("containerKelas");
+          if (container && container.querySelectorAll(".kelas-item-box").length === 0) {
+            tambahItemKelas(1);
+          }
+        }
+      })
+      .getDaftarPegawaiDanKelas();
+  }
+
+  function renderDropdownNamaPegawai() {
+    const sel = document.getElementById("namaPegawaiSelect");
+    if (!sel) return;
+
+    let targetList = listGuru;
+    if (activeTargetCategory === "kepsek") targetList = listKepsek;
+    else if (activeTargetCategory === "tendik") targetList = listTendik;
+
+    sel.innerHTML = `<option value="">-- Pilih Nama Pegawai --</option>`;
+    targetList.forEach(nama => {
+      const opt = document.createElement("option");
+      opt.value = nama;
+      opt.textContent = nama;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderSemuaDropdownKelas() {
+    const selects = document.querySelectorAll(".select-kelas-item");
+    selects.forEach(sel => {
+      const cur = sel.value;
+      sel.innerHTML = "<option value=''>Pilih Kelas</option>";
+      listKelas.forEach(k => {
+        const opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = k;
+        if (cur === k) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  function handleJumlahKelasChange() {
+    const targetCount = parseInt(document.getElementById("jumlahKelas").value, 10);
+    const container = document.getElementById("containerKelas");
+    const currentBoxes = container.querySelectorAll(".kelas-item-box");
+    const currentCount = currentBoxes.length;
+
+    if (targetCount > currentCount) {
+      for (let i = currentCount + 1; i <= targetCount; i++) {
+        tambahItemKelas(i);
+      }
+    } else if (targetCount < currentCount) {
+      for (let i = currentCount; i > targetCount; i--) {
+        const itemToRemove = document.getElementById("kelas-box-" + i);
+        if (itemToRemove) itemToRemove.remove();
+      }
+    }
+  }
+
+  function tambahItemKelas(index) {
+    const container = document.getElementById("containerKelas");
+    const box = document.createElement("div");
+    box.className = "kelas-item-box";
+    box.id = "kelas-box-" + index;
+
+    let kelasOptions = "<option value=''>Pilih Kelas</option>";
+    listKelas.forEach(k => { kelasOptions += `<option value='${k}'>${k}</option>`; });
+
+    let mapelOptions = "<option value=''>Pilih Mata Pelajaran</option>";
+    listMapel.forEach(m => { mapelOptions += `<option value='${m}'>${m}</option>`; });
+
+    box.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold text-primary small"><i class="bi bi-bookmark-fill me-1"></i> Penugasan Kelas #${index}</span>
+        ${index > 1 ? `<button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="hapusItemKelas(${index})"><i class="bi bi-trash"></i> Hapus</button>` : ''}
+      </div>
+      <div class="row g-2">
+        <div class="col-12 col-md-3">
+          <label class="form-label small fw-semibold">Kelas</label>
+          <select class="form-select form-select-sm select-kelas-item" id="kelas_${index}">
+            ${kelasOptions}
+          </select>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label small fw-semibold">Mata Pelajaran</label>
+          <select class="form-select form-select-sm" id="mapel_${index}">
+            ${mapelOptions}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold">Jam Awal</label>
+          <select class="form-select form-select-sm" id="jamAwal_${index}">
+            ${Array.from({length: 10}, (_, i) => `<option value="Jam Ke-${i+1}">Jam Ke-${i+1}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold">Jam Akhir</label>
+          <select class="form-select form-select-sm" id="jamAkhir_${index}">
+            ${Array.from({length: 10}, (_, i) => `<option value="Jam Ke-${i+1}" ${i===1?'selected':''}>Jam Ke-${i+1}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-12 mt-2">
+          <label class="form-label small fw-semibold">Bentuk Penugasan</label>
+          <textarea class="form-control form-control-sm" id="penugasan_${index}" rows="2" placeholder="Tuliskan materi atau instruksi tugas di buku/LKS..."></textarea>
+        </div>
+      </div>
+    `;
+    container.appendChild(box);
+  }
+
+  function hapusItemKelas(index) {
+    const box = document.getElementById("kelas-box-" + index);
+    if (box) box.remove();
+    const container = document.getElementById("containerKelas");
+    const remaining = container.querySelectorAll(".kelas-item-box").length;
+    document.getElementById("jumlahKelas").value = remaining;
+  }
+
+  function inisialisasiDragAndDrop() {
+    const dropzone = document.getElementById("uploadDropzone");
+    const fileInput = document.getElementById("fileBukti");
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", function() {
+      if (this.files && this.files[0]) prosesFileTerpilih(this.files[0]);
+    });
+    ["dragenter", "dragover"].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove("dragover"); }));
+    dropzone.addEventListener("drop", e => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) prosesFileTerpilih(e.dataTransfer.files[0]);
+    });
+  }
+
+  function prosesFileTerpilih(file) {
+    const alertUpload = document.getElementById("alertUploadFile");
+    alertUpload.classList.add("d-none");
+    const validExtensions = ["jpg", "jpeg", "pdf"];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+
+    if (!validExtensions.includes(fileExt)) {
+      alertUpload.className = "alert alert-danger py-2 small mt-2";
+      alertUpload.innerHTML = "<i class='bi bi-exclamation-circle me-1'></i> Format file tidak didukung! Hanya JPG, JPEG, atau PDF.";
+      alertUpload.classList.remove("d-none");
+      resetFileBukti();
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      alertUpload.className = "alert alert-danger py-2 small mt-2";
+      alertUpload.innerHTML = "<i class='bi bi-exclamation-circle me-1'></i> Ukuran file melebihi 2 MB!";
+      alertUpload.classList.remove("d-none");
+      resetFileBukti();
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      currentSelectedFile = {
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+        base64: e.target.result
+      };
+      document.getElementById("uploadDropzone").classList.add("d-none");
+      document.getElementById("filePreviewCard").classList.remove("d-none");
+      document.getElementById("previewFilename").textContent = file.name;
+      document.getElementById("previewFileSize").textContent = "(" + (file.size / 1024).toFixed(1) + " KB)";
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function resetFileBukti() {
+    currentSelectedFile = null;
+    document.getElementById("fileBukti").value = "";
+    document.getElementById("uploadDropzone").classList.remove("d-none");
+    document.getElementById("filePreviewCard").classList.add("d-none");
+  }
+
+  function pastikanFileTerbaca() {
+    return new Promise(resolve => {
+      const fileInput = document.getElementById("fileBukti");
+      if (currentSelectedFile && currentSelectedFile.base64) {
+        resolve(currentSelectedFile);
+      } else if (fileInput && fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = e => {
+          currentSelectedFile = {
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+            base64: e.target.result
+          };
+          resolve(currentSelectedFile);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      } else {
+        resolve(null);
+      }
+    });
+  }
+
+  function getNamaPegawaiAktif() {
+    const role = currentUserSession ? (currentUserSession.role || "").toLowerCase() : "";
+    if (role === "admin" || role === "piket") {
+      const sel = document.getElementById("namaPegawaiSelect");
+      return sel ? sel.value.trim() : "";
+    }
+    if (currentUserSession && currentUserSession.nama) {
+      return String(currentUserSession.nama).trim();
+    }
+    const fixedText = document.getElementById("namaPegawaiFixedText");
+    if (fixedText && fixedText.textContent && fixedText.textContent.trim() !== "-") {
+      return fixedText.textContent.trim();
+    }
+    const sel = document.getElementById("namaPegawaiSelect");
+    return sel ? sel.value.trim() : "";
+  }
+
+  function susunPesanWhatsApp(formData, linkDrive) {
+    let kategori = "PEGAWAI";
+    if (formData.isGuru) kategori = "GURU PENGAMPU";
+    else if (formData.targetRole === "kepsek") kategori = "KEPALA SEKOLAH";
+    else if (formData.targetRole === "tendik") kategori = "TENAGA KEPENDIDIKAN (TENDIK)";
+
+    let pesan = `*PEMBERITAHUAN KETIDAKHADIRAN PEGAWAI*\n`;
+    pesan += `*SMP NEGERI 1 CIRANJANG*\n\n`;
+    pesan += `Kategori       : *${kategori}*\n`;
+    pesan += `Hari / Tanggal : ${formData.hari}, ${formData.tanggal}\n`;
+    pesan += `Nama Pegawai   : *${formData.namaPegawai}*\n`;
+    pesan += `Keterangan     : *${formData.statusKehadiran}*\n`;
+
+    if (linkDrive && linkDrive !== "-") {
+      pesan += `Bukti Drive    : ${linkDrive}\n`;
+    }
+
+    if (formData.isGuru && formData.kelasItems && formData.kelasItems.length > 0) {
+      pesan += `\n*Rincian Penugasan Kelas:*\n`;
+      formData.kelasItems.forEach((item, idx) => {
+        pesan += `\n${idx+1}. Kelas: *${item.kelas}* (${item.jamAwal} - ${item.jamAkhir})\n`;
+        pesan += `   Mapel: ${item.mapel}\n`;
+        pesan += `   Tugas: ${item.penugasan || "-"}\n`;
+      });
+    }
+
+    if (formData.catatan) {
+      pesan += `\nCatatan: ${formData.catatan}\n`;
+    }
+
+    const pengirim = currentUserSession ? (currentUserSession.nama + " [" + currentUserSession.role.toUpperCase() + "]") : "Petugas";
+    pesan += `\n_Dicatat oleh: ${pengirim}_`;
+
+    return `https://wa.me/${NO_WA_TUJUAN}?text=${encodeURIComponent(pesan)}`;
+  }
+
+  function handleKirimWAManual() {
+    const nama = getNamaPegawaiAktif();
+    if (!nama) {
+      alert("Pilih nama pegawai terlebih dahulu!");
+      return;
+    }
+    const role = currentUserSession ? currentUserSession.role.toLowerCase() : "";
+    const isGuru = (role === "admin" || role === "piket") ? (activeTargetCategory === "guru") : (role === "guru");
+
+    const formData = {
+      namaPegawai: nama,
+      statusKehadiran: document.getElementById("statusKehadiran").value,
+      tanggal: document.getElementById("tanggal").value,
+      hari: document.getElementById("hari").value,
+      catatan: document.getElementById("catatan").value,
+      isGuru: isGuru,
+      targetRole: (role === "admin" || role === "piket") ? activeTargetCategory : role,
+      kelasItems: []
+    };
+
+    if (isGuru) {
+      const boxes = document.querySelectorAll(".kelas-item-box");
+      boxes.forEach(b => {
+        const idx = b.id.replace("kelas-box-", "");
+        formData.kelasItems.push({
+          kelas: document.getElementById("kelas_" + idx).value,
+          mapel: document.getElementById("mapel_" + idx).value,
+          jamAwal: document.getElementById("jamAwal_" + idx).value,
+          jamAkhir: document.getElementById("jamAkhir_" + idx).value,
+          penugasan: document.getElementById("penugasan_" + idx).value
+        });
+      });
+    }
+
+    const waUrl = susunPesanWhatsApp(formData, "-");
+    window.open(waUrl, "_blank");
+  }
+
+  async function handleFormSubmit(event) {
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
+    const btnSubmit = document.getElementById("btnSimpan");
+    const alertBox = document.getElementById("alertSubmit");
+    if (!alertBox || !btnSubmit) return;
+
+    alertBox.classList.add("d-none");
+
+    const nama = getNamaPegawaiAktif();
+    const statusKehadiran = document.getElementById("statusKehadiran") ? document.getElementById("statusKehadiran").value : "";
+    const tanggal = document.getElementById("tanggal") ? document.getElementById("tanggal").value : "";
+    const hari = document.getElementById("hari") ? document.getElementById("hari").value : "";
+    const catatan = document.getElementById("catatan") ? document.getElementById("catatan").value : "";
+
+    if (!nama || nama === "-" || nama.trim() === "") {
+      alertBox.className = "alert alert-warning py-2.5 small mb-3";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> <strong>Perhatian:</strong> Harap pilih atau tentukan Nama Pegawai terlebih dahulu!";
+      alertBox.classList.remove("d-none");
+      alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+
+    if (!statusKehadiran) {
+      alertBox.className = "alert alert-warning py-2.5 small mb-3";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> <strong>Perhatian:</strong> Harap pilih Status Ketidakhadiran!";
+      alertBox.classList.remove("d-none");
+      alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+
+    if (!tanggal) {
+      alertBox.className = "alert alert-warning py-2.5 small mb-3";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> <strong>Perhatian:</strong> Harap isi tanggal absensi!";
+      alertBox.classList.remove("d-none");
+      alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+
+    const role = currentUserSession ? (currentUserSession.role || "").toLowerCase() : "";
+    const isGuru = (role === "admin" || role === "piket") ? (activeTargetCategory === "guru") : (role === "guru");
+    const kelasItems = [];
+
+    if (isGuru) {
+      const boxes = document.querySelectorAll(".kelas-item-box");
+      if (boxes.length === 0) {
+        alertBox.className = "alert alert-warning py-2.5 small mb-3";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Minimal tambahkan 1 rincian kelas yang ditinggalkan!";
+        alertBox.classList.remove("d-none");
+        alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return false;
+      }
+      for (let i = 0; i < boxes.length; i++) {
+        const idx = boxes[i].id.replace("kelas-box-", "");
+        const klsEl = document.getElementById("kelas_" + idx);
+        const mplEl = document.getElementById("mapel_" + idx);
+        const kls = klsEl ? klsEl.value : "";
+        const mpl = mplEl ? mplEl.value : "";
+        if (!kls || !mpl) {
+          alertBox.className = "alert alert-warning py-2.5 small mb-3";
+          alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Harap lengkapi pilihan Kelas & Mata Pelajaran pada baris penugasan #" + (i+1);
+          alertBox.classList.remove("d-none");
+          alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return false;
+        }
+        kelasItems.push({
+          kelas: kls,
+          mapel: mpl,
+          jamAwal: document.getElementById("jamAwal_" + idx) ? document.getElementById("jamAwal_" + idx).value : "-",
+          jamAkhir: document.getElementById("jamAkhir_" + idx) ? document.getElementById("jamAkhir_" + idx).value : "-",
+          penugasan: document.getElementById("penugasan_" + idx) ? document.getElementById("penugasan_" + idx).value : "-"
+        });
+      }
+    }
+
+    // Tampilkan Indikator Proses Segera (User Feedback)
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Menyimpan ke Spreadsheet...";
+    alertBox.className = "alert alert-primary py-2.5 small mb-3";
+    alertBox.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span><strong>Menyimpan Data Absensi...</strong> Mohon tunggu, sedang menulis ke Sheet 'Rekap'.";
+    alertBox.classList.remove("d-none");
+    alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    let validFileData = null;
+    try {
+      validFileData = await pastikanFileTerbaca();
+    } catch (eFile) {
+      console.warn("Gagal membaca file bukti:", eFile);
+    }
+
+    const payload = {
+      namaPegawai: String(nama || "").trim(),
+      statusKehadiran: String(statusKehadiran || "Sakit").trim(),
+      tanggal: String(tanggal || "").trim(),
+      hari: String(hari || "Senin").trim(),
+      catatan: String(catatan || "").trim(),
+      isGuru: Boolean(isGuru),
+      targetRole: String((role === "admin" || role === "piket") ? activeTargetCategory : (role || "guru")),
+      kelasItems: kelasItems
+    };
+
+    let cleanFilePayload = null;
+    if (validFileData && validFileData.base64) {
+      cleanFilePayload = {
+        filename: String(validFileData.filename || "bukti.jpg"),
+        mimeType: String(validFileData.mimeType || "application/octet-stream"),
+        size: Number(validFileData.size || 0),
+        base64: String(validFileData.base64)
+      };
+    }
+
+    // Mengirim ke Google Apps Script via JSON String untuk menjamin 100% serialisasi lintas iframe
+    const jsonPayload = JSON.stringify(payload);
+    const jsonFileData = cleanFilePayload ? JSON.stringify(cleanFilePayload) : "";
+
+    google.script.run
+      .withSuccessHandler(function(response) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = "<i class='bi bi-send-fill me-1'></i> Simpan Data Absensi";
+
+        let res = response;
+        if (typeof res === "string") {
+          try { res = JSON.parse(res); } catch (eJson) {}
+        }
+
+        if (res && res.success) {
+          const waUrl = susunPesanWhatsApp(payload, res.linkDrive);
+
+          // Syarat 13: Notifikasi Berhasil di Bawah persis di atas tombol Simpan
+          alertBox.className = "alert alert-success py-3 small mb-3 border border-success shadow-sm";
+          alertBox.innerHTML = `
+            <div class="d-flex align-items-center">
+              <i class="bi bi-check-circle-fill text-success fs-4 me-2"></i>
+              <div>
+                <strong class="text-success fs-6">Data Absensi Berhasil Disimpan!</strong>
+                <div class="text-dark small">${res.message || "Data telah tercatat di Sheet 'Rekap'."}</div>
+                <div class="text-muted mt-1" style="font-size:0.78rem;">
+                  <i class="bi bi-whatsapp text-success me-1"></i>Pemberitahuan WhatsApp otomatis diproses dan dikirim.
+                </div>
+              </div>
+            </div>
+            ${res.linkDrive && res.linkDrive !== '-' ? `
+            <div class="mt-2 pt-2 border-top">
+              <a href="${res.linkDrive}" target="_blank" class="btn btn-sm btn-outline-primary bg-white"><i class="bi bi-folder-check me-1"></i> Lihat Bukti di Google Drive</a>
+            </div>` : ''}
+          `;
+          alertBox.classList.remove("d-none");
+          alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+          // Otomatis buka WhatsApp di tab baru
+          try {
+            window.open(waUrl, "_blank");
+          } catch (eWA) {
+            console.log("Popup dicegah oleh peramban:", eWA);
+          }
+
+          // Reset sebagian isian
+          if (document.getElementById("catatan")) document.getElementById("catatan").value = "";
+          resetFileBukti();
+
+          // Refresh rekap jika fungsi tersedia
+          if (typeof muatDataRekap === "function") {
+            try { muatDataRekap(); } catch (eRekap) {}
+          }
+        } else {
+          alertBox.className = "alert alert-danger py-2.5 small mb-3";
+          alertBox.innerHTML = "<i class='bi bi-x-circle-fill text-danger me-1'></i> <strong>Gagal:</strong> " + ((res && res.message) || "Terjadi kesalahan saat menyimpan data.");
+          alertBox.classList.remove("d-none");
+          alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      })
+      .withFailureHandler(function(err) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = "<i class='bi bi-send-fill me-1'></i> Simpan Data Absensi";
+        alertBox.className = "alert alert-danger py-2.5 small mb-3";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-octagon-fill text-danger me-1'></i> <strong>Gagal Menyimpan (Error GAS):</strong> " + (err.message || String(err));
+        alertBox.classList.remove("d-none");
+        alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      })
+      .simpanPresensi(jsonPayload, jsonFileData);
+  }
+
+  function handleFilterTipeChange() {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const boxHarian = document.getElementById("boxFilterHarian");
+    const boxMingguanMulai = document.getElementById("boxFilterMingguanMulai");
+    const boxMingguanSelesai = document.getElementById("boxFilterMingguanSelesai");
+    const boxBulan = document.getElementById("boxFilterBulananBulan");
+    const boxTahun = document.getElementById("boxFilterBulananTahun");
+
+    boxHarian.classList.add("d-none");
+    boxMingguanMulai.classList.add("d-none");
+    boxMingguanSelesai.classList.add("d-none");
+    boxBulan.classList.add("d-none");
+    boxTahun.classList.add("d-none");
+
+    if (tipe === "harian") boxHarian.classList.remove("d-none");
+    else if (tipe === "mingguan") { boxMingguanMulai.classList.remove("d-none"); boxMingguanSelesai.classList.remove("d-none"); }
+    else if (tipe === "bulanan") { boxBulan.classList.remove("d-none"); boxTahun.classList.remove("d-none"); }
+  }
+
+  function muatDataRekap() {
+    const filterObj = {
+      tipe: document.getElementById("filterRekapTipe").value,
+      tanggal: document.getElementById("rekapTglHarian").value,
+      tglMulai: document.getElementById("rekapTglMulai").value,
+      tglSelesai: document.getElementById("rekapTglSelesai").value,
+      bulan: document.getElementById("rekapBulan").value,
+      tahun: document.getElementById("rekapTahun").value
+    };
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          currentRekapRecords = res.records || [];
+          renderRekapTablesSeparated(currentRekapRecords);
+        }
+      })
+      .getRekapData(filterObj, currentUserSession);
+  }
+
+  /**
+   * Syarat 1: Memisahkan Data Rekap ke 3 Role (Kepsek, Guru, Tendik)
+   * Berdasarkan rolePegawai dari Sheet Users dan daftar master terdaftar.
+   */
+  function pisahkanRekapBerdasarkanRole(records) {
+    const recKepsek = [];
+    const recGuru = [];
+    const recTendik = [];
+
+    (records || []).forEach(r => {
+      const role = String(r.rolePegawai || "").toLowerCase().trim();
+      const nama = String(r.namaPegawai || "").trim();
+      const namaLower = nama.toLowerCase();
+
+      // Prioritas 1: Role resmi dari Code.gs / Sheet Users
+      if (role === "kepsek") {
+        recKepsek.push(r);
+      } else if (role === "tendik") {
+        recTendik.push(r);
+      } else if (role === "guru") {
+        recGuru.push(r);
+      } else {
+        // Prioritas 2: Cocokkan nama ke daftar master
+        const isKepsek = (listKepsek || []).some(k => k.toLowerCase() === namaLower) || namaLower.includes("yetty nurhayati");
+        const isTendik = (listTendik || []).some(t => t.toLowerCase() === namaLower);
+        const isGuru = (listGuru || []).some(g => g.toLowerCase() === namaLower);
+
+        if (isKepsek) {
+          recKepsek.push(r);
+        } else if (isTendik) {
+          recTendik.push(r);
+        } else if (isGuru) {
+          recGuru.push(r);
+        } else if (String(r.kelas || "").trim() === "-" && String(r.mapel || "").trim() === "-") {
+          recTendik.push(r);
+        } else {
+          recGuru.push(r);
+        }
+      }
+    });
+
+    return { recKepsek, recGuru, recTendik };
+  }
+
+  /**
+   * Syarat 3: Menghindari Hari Ganda (contoh: "Senin, Senin, 25 Oktober 2026")
+   */
+  function formatHariTanggalDisplay(r) {
+    if (!r) return "-";
+    if (r.fullHariTanggal) return r.fullHariTanggal;
+    const h = String(r.hari || "").trim();
+    const t = String(r.tanggal || "").trim();
+    if (!h) return t || "-";
+    if (!t) return h || "-";
+    if (t.toLowerCase().includes(h.toLowerCase())) {
+      return t;
+    }
+    return `${h}, ${t}`;
+  }
+
+  function renderRekapTablesSeparated(records) {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const role = currentUserSession ? currentUserSession.role.toLowerCase() : "";
+
+    // Syarat 1: Pisahkan data menjadi 3 kelompok secara akurat
+    const { recKepsek, recGuru, recTendik } = pisahkanRekapBerdasarkanRole(records);
+
+    const stats = { total: 0, sakit: 0, izin: 0, tugas: 0, alpa: 0 };
+    const teacherDays = new Set();
+
+    records.forEach(r => {
+      const key = `${r.tanggal}___${r.namaPegawai}`;
+      if (!teacherDays.has(key)) {
+        teacherDays.add(key);
+        stats.total++;
+        const s = (r.statusKehadiran || "").toLowerCase();
+        if (s.includes("sakit")) stats.sakit++;
+        else if (s.includes("izin")) stats.izin++;
+        else if (s.includes("tugas")) stats.tugas++;
+        else stats.alpa++;
+      }
+    });
+
+    document.getElementById("statTotal").textContent = stats.total;
+    document.getElementById("statSakit").textContent = stats.sakit;
+    document.getElementById("statIzin").textContent = stats.izin;
+    document.getElementById("statTugas").textContent = stats.tugas;
+    document.getElementById("statAlpa").textContent = stats.alpa;
+
+    document.getElementById("badgeCountKepsek").textContent = recKepsek.length + " Data";
+    document.getElementById("badgeCountGuru").textContent = recGuru.length + " Penugasan";
+    document.getElementById("badgeCountTendik").textContent = recTendik.length + " Data";
+
+    // Syarat 11: Sembunyikan bagian tabel yang bukan role-nya jika login sebagai Pegawai
+    if (role === "kepsek") {
+      document.getElementById("sectionTabelGuru").classList.add("d-none");
+      document.getElementById("sectionTabelTendik").classList.add("d-none");
+      document.getElementById("sectionTabelKepsek").classList.remove("d-none");
+    } else if (role === "guru") {
+      document.getElementById("sectionTabelKepsek").classList.add("d-none");
+      document.getElementById("sectionTabelTendik").classList.add("d-none");
+      document.getElementById("sectionTabelGuru").classList.remove("d-none");
+    } else if (role === "tendik") {
+      document.getElementById("sectionTabelKepsek").classList.add("d-none");
+      document.getElementById("sectionTabelGuru").classList.add("d-none");
+      document.getElementById("sectionTabelTendik").classList.remove("d-none");
+    } else {
+      // Admin & Piket: Tampilkan ketiganya
+      document.getElementById("sectionTabelKepsek").classList.remove("d-none");
+      document.getElementById("sectionTabelGuru").classList.remove("d-none");
+      document.getElementById("sectionTabelTendik").classList.remove("d-none");
+    }
+
+    // 1. RENDER TABEL A (KEPSEK) - Syarat 3, 8 & 10: Tanpa Hari Ganda & Tanpa Kolom Waktu
+    const tbodyKepsek = document.getElementById("tbodyKepsek");
+    if (recKepsek.length === 0) {
+      tbodyKepsek.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-muted">Tidak ada catatan Kepala Sekolah.</td></tr>`;
+    } else {
+      tbodyKepsek.innerHTML = recKepsek.map((r, i) => `
+        <tr>
+          <td class="text-center font-monospace">${i + 1}</td>
+          <td><strong>${formatHariTanggalDisplay(r)}</strong></td>
+          <td class="fw-bold text-primary">${r.namaPegawai}</td>
+          <td><span class="badge bg-warning text-dark">${r.statusKehadiran}</span></td>
+          <td class="text-center">${r.linkKehadiran && r.linkKehadiran !== '-' ? `<a href='${r.linkKehadiran}' target='_blank' class='btn btn-xs btn-outline-primary py-0 px-2'>Drive</a>` : '-'}</td>
+          <td><small class="text-muted">${r.catatan || '-'}</small></td>
+        </tr>
+      `).join('');
+    }
+
+    // 2. RENDER TABEL B (GURU) - Syarat 3 & 10: Tanpa Hari Ganda & Tanpa Kolom Waktu
+    const theadGuru = document.getElementById("theadGuru");
+    const tbodyGuru = document.getElementById("tbodyGuru");
+
+    if (tipe === "mingguan" || tipe === "bulanan") {
+      theadGuru.innerHTML = `
+        <tr>
+          <th class="text-center w-40px">#</th>
+          <th>Nama Guru</th>
+          <th class="text-center">Sakit</th>
+          <th class="text-center">Izin</th>
+          <th class="text-center">Tugas Dinas</th>
+          <th class="text-center">Tanpa Ket.</th>
+          <th class="text-center">Total Hari</th>
+          <th>Rincian Tanggal</th>
+        </tr>
+      `;
+      // Grouping mingguan/bulanan
+      const guruMap = {};
+      const seenDays = new Set();
+      recGuru.forEach(r => {
+        const dKey = `${r.tanggal}___${r.namaPegawai}`;
+        if (!guruMap[r.namaPegawai]) {
+          guruMap[r.namaPegawai] = { nama: r.namaPegawai, sakit: 0, izin: 0, tugas: 0, alpa: 0, totalHari: 0, rincian: [] };
+        }
+        if (!seenDays.has(dKey)) {
+          seenDays.add(dKey);
+          guruMap[r.namaPegawai].totalHari++;
+          const s = (r.statusKehadiran || "").toLowerCase();
+          let lbl = "Tanpa Ket.";
+          if (s.includes("sakit")) { guruMap[r.namaPegawai].sakit++; lbl = "Sakit"; }
+          else if (s.includes("izin")) { guruMap[r.namaPegawai].izin++; lbl = "Izin"; }
+          else if (s.includes("tugas")) { guruMap[r.namaPegawai].tugas++; lbl = "Tugas Dinas"; }
+          else { guruMap[r.namaPegawai].alpa++; }
+          guruMap[r.namaPegawai].rincian.push(`${r.tanggal} (${lbl})`);
+        }
+      });
+
+      const listG = Object.values(guruMap);
+      if (listG.length === 0) {
+        tbodyGuru.innerHTML = `<tr><td colspan="8" class="text-center py-3 text-muted">Tidak ada data rekap guru.</td></tr>`;
+      } else {
+        tbodyGuru.innerHTML = listG.map((g, i) => `
+          <tr>
+            <td class="text-center font-monospace">${i + 1}</td>
+            <td class="fw-bold text-primary">${g.nama}</td>
+            <td class="text-center"><span class="badge bg-warning text-dark">${g.sakit}</span></td>
+            <td class="text-center"><span class="badge bg-info text-dark">${g.izin}</span></td>
+            <td class="text-center"><span class="badge bg-primary text-white">${g.tugas}</span></td>
+            <td class="text-center"><span class="badge bg-danger text-white">${g.alpa}</span></td>
+            <td class="text-center fw-bold"><span class="badge bg-dark">${g.totalHari} Hari</span></td>
+            <td><small class="text-muted">${g.rincian.join(', ')}</small></td>
+          </tr>
+        `).join('');
+      }
+    } else {
+      // Harian Guru: TANPA KOLOM WAKTU
+      theadGuru.innerHTML = `
+        <tr>
+          <th class="text-center w-40px">#</th>
+          <th>Hari / Tanggal</th>
+          <th>Nama Guru</th>
+          <th>Status</th>
+          <th class="text-center">Bukti Drive</th>
+          <th class="text-center">Kelas</th>
+          <th>Jam Ke-</th>
+          <th>Mata Pelajaran</th>
+          <th>Bentuk Penugasan</th>
+          <th>Catatan</th>
+        </tr>
+      `;
+
+      if (recGuru.length === 0) {
+        tbodyGuru.innerHTML = `<tr><td colspan="10" class="text-center py-3 text-muted">Tidak ada catatan Guru.</td></tr>`;
+      } else {
+        // Grouping multi-kelas
+        const mapG = {};
+        const groups = [];
+        recGuru.forEach(r => {
+          const k = `${r.tanggal}___${r.namaPegawai}`;
+          if (!mapG[k]) {
+            mapG[k] = { 
+              displayTanggal: formatHariTanggalDisplay(r),
+              nama: r.namaPegawai, 
+              status: r.statusKehadiran, 
+              link: r.linkKehadiran, 
+              catatan: r.catatan, 
+              items: [] 
+            };
+            groups.push(mapG[k]);
+          }
+          mapG[k].items.push({ kelas: r.kelas, jamAwal: r.jamAwal, jamAkhir: r.jamAkhir, mapel: r.mapel, tugas: r.bentukPenugasan });
+        });
+
+        let rowsHtml = "";
+        let noG = 1;
+        groups.forEach(g => {
+          const span = g.items.length;
+          g.items.forEach((item, itemIdx) => {
+            if (itemIdx === 0) {
+              rowsHtml += `
+                <tr>
+                  <td class="text-center font-monospace">${noG++}</td>
+                  <td rowspan="${span}"><strong>${g.displayTanggal}</strong></td>
+                  <td rowspan="${span}" class="fw-bold text-primary">${g.nama}</td>
+                  <td rowspan="${span}"><span class="badge bg-warning text-dark">${g.status}</span></td>
+                  <td rowspan="${span}" class="text-center">${g.link && g.link !== '-' ? `<a href='${g.link}' target='_blank' class='btn btn-xs btn-outline-primary py-0 px-2'>Drive</a>` : '-'}</td>
+                  <td class="text-center"><span class="badge bg-light text-dark border">${item.kelas}</span></td>
+                  <td><small>${item.jamAwal} s/d ${item.jamAkhir}</small></td>
+                  <td>${item.mapel}</td>
+                  <td><small>${item.tugas || '-'}</small></td>
+                  <td rowspan="${span}"><small class="text-muted">${g.catatan || '-'}</small></td>
+                </tr>
+              `;
+            } else {
+              rowsHtml += `
+                <tr>
+                  <td class="text-center font-monospace">${noG++}</td>
+                  <td class="text-center"><span class="badge bg-light text-dark border">${item.kelas}</span></td>
+                  <td><small>${item.jamAwal} s/d ${item.jamAkhir}</small></td>
+                  <td>${item.mapel}</td>
+                  <td><small>${item.tugas || '-'}</small></td>
+                </tr>
+              `;
+            }
+          });
+        });
+        tbodyGuru.innerHTML = rowsHtml;
+      }
+    }
+
+    // 3. RENDER TABEL C (TENDIK) - Syarat 1, 3, 8 & 10: Tampil di Tabel C, Tanpa Hari Ganda, Tanpa Kolom Waktu
+    const tbodyTendik = document.getElementById("tbodyTendik");
+    if (recTendik.length === 0) {
+      tbodyTendik.innerHTML = `<tr><td colspan="6" class="text-center py-3 text-muted">Tidak ada catatan Tenaga Kependidikan.</td></tr>`;
+    } else {
+      tbodyTendik.innerHTML = recTendik.map((r, i) => `
+        <tr>
+          <td class="text-center font-monospace">${i + 1}</td>
+          <td><strong>${formatHariTanggalDisplay(r)}</strong></td>
+          <td class="fw-bold text-primary">${r.namaPegawai}</td>
+          <td><span class="badge bg-warning text-dark">${r.statusKehadiran}</span></td>
+          <td class="text-center">${r.linkKehadiran && r.linkKehadiran !== '-' ? `<a href='${r.linkKehadiran}' target='_blank' class='btn btn-xs btn-outline-primary py-0 px-2'>Drive</a>` : '-'}</td>
+          <td><small class="text-muted">${r.catatan || '-'}</small></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  function handleCetakPDF() {
+    if (!currentRekapRecords || currentRekapRecords.length === 0) {
+      alert("Tidak ada data rekap yang dapat dicetak.");
+      return;
+    }
+
+    // Syarat 1: Pisahkan data cetak sesuai role sebenarnya
+    const { recKepsek, recGuru, recTendik } = pisahkanRekapBerdasarkanRole(currentRekapRecords);
+
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const tglHarian = document.getElementById("rekapTglHarian").value;
+    const tglMulai = document.getElementById("rekapTglMulai").value;
+    const tglSelesai = document.getElementById("rekapTglSelesai").value;
+    const bulan = document.getElementById("rekapBulan").value;
+    const tahun = document.getElementById("rekapTahun").value;
+
+    let periodeLabel = tipe.toUpperCase();
+    if (tipe === "harian") periodeLabel += " (" + tglHarian + ")";
+    else if (tipe === "mingguan") periodeLabel += " (" + tglMulai + " s/d " + tglSelesai + ")";
+    else if (tipe === "bulanan") periodeLabel += " (Bulan " + bulan + " Tahun " + tahun + ")";
+
+    const petugasNama = currentUserSession ? currentUserSession.nama : "Petugas";
+    const petugasRole = currentUserSession ? currentUserSession.role.toUpperCase() : "ADMIN";
+    const now = new Date();
+    const tglCetak = now.toLocaleDateString("id-ID", { dateStyle: "full" });
+    const jamCetak = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2);
+
+    let html = `
+      <div class="print-kop">
+        <h3 style="margin:0;font-size:11pt;text-transform:uppercase;">Pemerintah Daerah Kabupaten Cianjur</h3>
+        <h2 style="margin:2px 0;font-size:13pt;text-transform:uppercase;">Dinas Pendidikan Pemuda dan Olahraga</h2>
+        <h1 style="margin:2px 0;font-size:16pt;text-transform:uppercase;font-weight:900;">SMP NEGERI 1 CIRANJANG</h1>
+        <p style="margin:0;font-size:8.5pt;font-style:italic;">Jalan Raya Ciranjang No. 1, Ciranjang, Kabupaten Cianjur, Jawa Barat 43282</p>
+      </div>
+
+      <div style="text-align:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:12pt;text-transform:uppercase;text-decoration:underline;">LAPORAN REKAPITULASI KETIDAKHADIRAN PEGAWAI</h3>
+        <p style="margin:3px 0 0 0;font-size:9pt;color:#333;">Kepala Sekolah, Guru Pengampu, dan Tenaga Kependidikan</p>
+      </div>
+
+      <div class="print-meta-box" style="display:flex;justify-content:space-between;font-size:9pt;margin-bottom:12px;">
+        <div>
+          <div><strong>Periode Rekap:</strong> ${periodeLabel}</div>
+          <div><strong>Penanggung Jawab:</strong> ${petugasNama} [${petugasRole}]</div>
+        </div>
+        <div style="text-align:right;">
+          <div><strong>Tanggal Cetak:</strong> ${tglCetak}</div>
+          <div><strong>Total Entri:</strong> ${currentRekapRecords.length} Data</div>
+        </div>
+      </div>
+    `;
+
+    // Tabel A Cetak (Kepsek)
+    if (recKepsek.length > 0) {
+      html += `
+        <h4 style="font-size:10pt;font-weight:bold;margin:12px 0 4px 0;text-transform:uppercase;">A. Kepala Sekolah</h4>
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">No</th>
+              <th style="width:130px;">Hari, Tanggal</th>
+              <th>Nama Pegawai</th>
+              <th style="width:110px;">Status Kehadiran</th>
+              <th>Catatan Tambahan</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      recKepsek.forEach((r, idx) => {
+        html += `
+          <tr>
+            <td class="center">${idx + 1}</td>
+            <td>${formatHariTanggalDisplay(r)}</td>
+            <td><strong>${r.namaPegawai}</strong></td>
+            <td class="center">${r.statusKehadiran}</td>
+            <td>${r.catatan || '-'}</td>
+          </tr>
+        `;
+      });
+      html += `</tbody></table>`;
+    }
+
+    // Tabel B Cetak (Guru Pengampu) - TANPA 'Item Total Entri' (Syarat 4)
+    if (recGuru.length > 0) {
+      html += `
+        <h4 style="font-size:10pt;font-weight:bold;margin:12px 0 4px 0;text-transform:uppercase;">B. Guru Pengampu & Penugasan Kelas</h4>
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">No</th>
+              <th style="width:120px;">Hari, Tanggal</th>
+              <th>Nama Guru</th>
+              <th style="width:85px;">Status</th>
+              <th style="width:55px;">Kelas</th>
+              <th style="width:65px;">Jam</th>
+              <th>Mata Pelajaran</th>
+              <th>Bentuk Penugasan</th>
+              <th style="width:90px;">Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      recGuru.forEach((r, idx) => {
+        html += `
+          <tr>
+            <td class="center">${idx + 1}</td>
+            <td>${formatHariTanggalDisplay(r)}</td>
+            <td><strong>${r.namaPegawai}</strong></td>
+            <td class="center">${r.statusKehadiran}</td>
+            <td class="center"><strong>${r.kelas}</strong></td>
+            <td class="center">${(r.jamAwal || '').replace('Jam Ke-', '')} - ${(r.jamAkhir || '').replace('Jam Ke-', '')}</td>
+            <td>${r.mapel}</td>
+            <td>${r.bentukPenugasan || '-'}</td>
+            <td>${r.catatan || '-'}</td>
+          </tr>
+        `;
+      });
+      html += `</tbody></table>`;
+    }
+
+    // Tabel C Cetak (Tendik)
+    if (recTendik.length > 0) {
+      html += `
+        <h4 style="font-size:10pt;font-weight:bold;margin:12px 0 4px 0;text-transform:uppercase;">C. Tenaga Kependidikan (Tendik)</h4>
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">No</th>
+              <th style="width:130px;">Hari, Tanggal</th>
+              <th>Nama Tenaga Kependidikan</th>
+              <th style="width:110px;">Status Kehadiran</th>
+              <th>Catatan Tambahan</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      recTendik.forEach((r, idx) => {
+        html += `
+          <tr>
+            <td class="center">${idx + 1}</td>
+            <td>${formatHariTanggalDisplay(r)}</td>
+            <td><strong>${r.namaPegawai}</strong></td>
+            <td class="center">${r.statusKehadiran}</td>
+            <td>${r.catatan || '-'}</td>
+          </tr>
+        `;
+      });
+      html += `</tbody></table>`;
+    }
+
+    // Tanda Tangan
+    html += `
+      <div class="print-signature">
+        <div class="sign-col">
+          <div>Mengetahui,</div>
+          <div style="font-weight:bold;">Kepala Sekolah</div>
+          <div class="sign-space"></div>
+          <div style="font-weight:bold;text-decoration:underline;">Dra. YETTY NURHAYATI, S.Pd., M.Pd.</div>
+          <div>NIP. 196709101994032006</div>
+        </div>
+
+        <div class="sign-col">
+          <div>Ciranjang, ${now.toLocaleDateString("id-ID", { dateStyle: "long" })}</div>
+          <div style="font-weight:bold;">Petugas Penanggung Jawab,</div>
+          <div class="sign-space"></div>
+          <div style="font-weight:bold;text-decoration:underline;">${petugasNama}</div>
+          <div style="font-size:8pt;color:#555;">[${petugasRole}]</div>
+        </div>
+      </div>
+    `;
+
+    // Syarat 5: Catatan Kaki (Footer) Wajib
+    html += `
+      <div style="margin-top:25px;border-top:1px solid #888;padding-top:6px;font-size:8pt;text-align:center;font-style:italic;color:#444;">
+        Dokumen ini dihasilkan oleh Aplikasi Sistem Aplikasi Pegawai SMPN 1 Ciranjang pada ${tglCetak} pukul ${jamCetak} WIB
+      </div>
+    `;
+
+    const printArea = document.getElementById("printArea");
+    if (printArea) {
+      printArea.innerHTML = html;
+    }
+
+    window.print();
+  }
+
+  function handleCetakPanduanPDF() {
+    const now = new Date();
+    const tglCetak = now.toLocaleDateString("id-ID", { dateStyle: "full" });
+
+    let html = `
+      <div class="print-kop">
+        <h3 style="margin:0;font-size:11pt;text-transform:uppercase;">Pemerintah Daerah Kabupaten Cianjur</h3>
+        <h2 style="margin:2px 0;font-size:13pt;text-transform:uppercase;">Dinas Pendidikan Pemuda dan Olahraga</h2>
+        <h1 style="margin:2px 0;font-size:16pt;text-transform:uppercase;font-weight:900;">SMP NEGERI 1 CIRANJANG</h1>
+        <p style="margin:0;font-size:8.5pt;font-style:italic;">Jalan Raya Ciranjang No. 1, Ciranjang, Kabupaten Cianjur, Jawa Barat 43282</p>
+      </div>
+
+      <div style="text-align:center;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:13pt;text-transform:uppercase;text-decoration:underline;">BUKU PANDUAN PENGGUNAAN SISTEM ABSENSI PEGAWAI</h3>
+        <p style="margin:4px 0 0 0;font-size:9.5pt;color:#333;">Petunjuk Operasional Bagi 5 Kelompok Pegawai</p>
+      </div>
+
+      <h4 style="font-size:11pt;border-bottom:1px solid #000;padding-bottom:3px;margin-top:14px;">1. Hak Akses & Matriks Fitur</h4>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Entri Presensi</th>
+            <th>Rincian Kelas</th>
+            <th>Akses Rekapitulasi</th>
+            <th>Cetak PDF & Excel</th>
+            <th>Ganti Password</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>ADMIN</strong></td>
+            <td>Semua Pegawai</td>
+            <td>Bisa dipilih jika Guru</td>
+            <td>Lengkap (A, B, C)</td>
+            <td class="center">Ya</td>
+            <td class="center">Ya (Semua Akun)</td>
+          </tr>
+          <tr>
+            <td><strong>PIKET</strong></td>
+            <td>Semua Pegawai</td>
+            <td>Bisa dipilih jika Guru</td>
+            <td>Harian Saja</td>
+            <td class="center">Ya</td>
+            <td class="center">Tidak</td>
+          </tr>
+          <tr>
+            <td><strong>KEPSEK</strong></td>
+            <td>Mandiri</td>
+            <td>Tidak Ada</td>
+            <td>Mandiri (Tabel A)</td>
+            <td class="center">Web Saja</td>
+            <td class="center">Tidak</td>
+          </tr>
+          <tr>
+            <td><strong>GURU</strong></td>
+            <td>Mandiri</td>
+            <td>Wajib Multi-Kelas</td>
+            <td>Mandiri (Tabel B)</td>
+            <td class="center">Web Saja</td>
+            <td class="center">Tidak</td>
+          </tr>
+          <tr>
+            <td><strong>TENDIK</strong></td>
+            <td>Mandiri</td>
+            <td>Tidak Ada</td>
+            <td>Mandiri (Tabel C)</td>
+            <td class="center">Web Saja</td>
+            <td class="center">Tidak</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 style="font-size:11pt;border-bottom:1px solid #000;padding-bottom:3px;margin-top:14px;">2. Ringkasan Alur Kerja Utama</h4>
+      <ol style="font-size:9.5pt;line-height:1.6;margin-left:20px;">
+        <li><strong>Role Admin:</strong> Berwenang mengelola password seluruh pengguna dengan melihat Nama Lengkap dan Role secara readonly. Mengakses semua rekap dan mencetak dokumen resmi.</li>
+        <li><strong>Role Piket:</strong> Mencatat presensi harian guru/pegawai yang tidak hadir. Memasukkan rincian penugasan kelas dan memeriksa Rekap Harian.</li>
+        <li><strong>Role Kepsek & Tendik:</strong> Mengisi presensi mandiri ringkas tanpa kolom kelas, mengirim bukti kehadiran ke Drive, serta memantau riwayat di web.</li>
+        <li><strong>Role Guru:</strong> Mengisi presensi mandiri dengan rincian kelas, jam, mapel, dan tugas siswa. Pesan WhatsApp otomatis disusun dan terkirim begitu tombol Simpan ditekan.</li>
+      </ol>
+
+      <div class="print-signature" style="margin-top:30px;">
+        <div class="sign-col">
+          <div>Mengetahui,</div>
+          <div style="font-weight:bold;">Kepala Sekolah</div>
+          <div class="sign-space"></div>
+          <div style="font-weight:bold;text-decoration:underline;">Dra. YETTY NURHAYATI, S.Pd., M.Pd.</div>
+          <div>NIP. 196709101994032006</div>
+        </div>
+
+        <div class="sign-col">
+          <div>Ciranjang, ${now.toLocaleDateString("id-ID", { dateStyle: "long" })}</div>
+          <div style="font-weight:bold;">Administrator Sistem,</div>
+          <div class="sign-space"></div>
+          <div style="font-weight:bold;text-decoration:underline;">${currentUserSession ? currentUserSession.nama : "Administrator"}</div>
+          <div style="font-size:8pt;color:#555;">[SMPN 1 CIRANJANG]</div>
+        </div>
+      </div>
+
+      <div style="margin-top:25px;border-top:1px solid #888;padding-top:6px;font-size:8pt;text-align:center;font-style:italic;color:#444;">
+        Dokumen Panduan ini dihasilkan oleh Aplikasi Sistem Aplikasi Pegawai SMPN 1 Ciranjang pada ${tglCetak}
+      </div>
+    `;
+
+    const printArea = document.getElementById("printArea");
+    if (printArea) {
+      printArea.innerHTML = html;
+    }
+
+    window.print();
+  }
+
+  function handleUnduhXLSX() {
+    if (!currentRekapRecords || currentRekapRecords.length === 0) {
+      alert("Tidak ada data rekap yang dapat diunduh.");
+      return;
+    }
+    const tgl = document.getElementById("rekapTglHarian").value || "Semua";
+    const filename = `Rekap_Absensi_Pegawai_${tgl}.xlsx`;
+
+    const dataExcel = currentRekapRecords.map((r, idx) => ({
+      "No": idx + 1,
+      "Hari": r.hari,
+      "Tanggal": r.tanggal,
+      "Nama Pegawai": r.namaPegawai,
+      "Status Kehadiran": r.statusKehadiran,
+      "Link Drive": r.linkKehadiran,
+      "Kelas": r.kelas !== '-' ? r.kelas : '',
+      "Jam Awal": r.jamAwal !== '-' ? r.jamAwal : '',
+      "Jam Akhir": r.jamAkhir !== '-' ? r.jamAkhir : '',
+      "Mata Pelajaran": r.mapel !== '-' ? r.mapel : '',
+      "Bentuk Penugasan": r.bentukPenugasan !== '-' ? r.bentukPenugasan : '',
+      "Catatan": r.catatan
+    }));
+
+    if (typeof XLSX !== "undefined") {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(dataExcel);
+      XLSX.utils.book_append_sheet(wb, ws, "Rekap Pegawai");
+      XLSX.writeFile(wb, filename);
+    }
+  }
+
+  // Syarat 12: Ganti Password Admin
+  function renderDropdownGantiPassword() {
+    const sel = document.getElementById("targetUserPassword");
+    if (!sel) return;
+    sel.innerHTML = `<option value="">-- Pilih Pegawai / Akun --</option>`;
+    listSemuaPegawai.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u.username;
+      opt.textContent = `${u.nama} [${u.role}] (${u.username})`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function handleTargetPasswordChange() {
+    const sel = document.getElementById("targetUserPassword").value;
+    const user = listSemuaPegawai.find(u => u.username === sel);
+    if (user) {
+      document.getElementById("readonlyNamaLengkap").textContent = user.nama;
+      document.getElementById("readonlyRole").textContent = user.role;
+    } else {
+      document.getElementById("readonlyNamaLengkap").textContent = "-";
+      document.getElementById("readonlyRole").textContent = "-";
+    }
+  }
+
+  function handleGantiPasswordSubmit(event) {
+    event.preventDefault();
+    const alertPass = document.getElementById("alertPassword");
+    const btnPass = document.getElementById("btnGantiPass");
+    alertPass.classList.add("d-none");
+
+    const targetUser = document.getElementById("targetUserPassword").value;
+    const newPass = document.getElementById("newPasswordInput").value.trim();
+    const confirmPass = document.getElementById("confirmPasswordInput").value.trim();
+
+    if (!newPass || !confirmPass) {
+      alertPass.className = "alert alert-warning py-2 small";
+      alertPass.innerHTML = "Harap lengkapi password baru dan konfirmasi!";
+      alertPass.classList.remove("d-none");
+      return;
+    }
+
+    if (newPass !== confirmPass) {
+      alertPass.className = "alert alert-danger py-2 small";
+      alertPass.innerHTML = "Password baru dan Konfirmasi tidak cocok!";
+      alertPass.classList.remove("d-none");
+      return;
+    }
+
+    btnPass.disabled = true;
+    btnPass.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Menyimpan...";
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btnPass.disabled = false;
+        btnPass.innerHTML = "<i class='bi bi-check-circle me-1'></i> Simpan Password Baru";
+        if (res && res.success) {
+          alertPass.className = "alert alert-success py-2 small";
+          alertPass.innerHTML = "<i class='bi bi-check-circle-fill me-1'></i> " + res.message;
+          alertPass.classList.remove("d-none");
+          document.getElementById("formGantiPass").reset();
+          document.getElementById("readonlyNamaLengkap").textContent = "-";
+          document.getElementById("readonlyRole").textContent = "-";
+        } else {
+          alertPass.className = "alert alert-danger py-2 small";
+          alertPass.innerHTML = "<i class='bi bi-x-circle me-1'></i> " + (res.message || "Gagal mengganti password.");
+          alertPass.classList.remove("d-none");
+        }
+      })
+      .gantiPassword("admin", targetUser, newPass);
+  }
+</script>

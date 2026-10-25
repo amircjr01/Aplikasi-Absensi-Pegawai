@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Absensi Pegawai",
+  "description": "Sistem Informasi Absensi Pegawai (Kepsek, Guru, Tendik, Piket, Admin) SMP Negeri 1 Ciranjang dengan integrasi WhatsApp otomatis, ekspor Excel XLSX resmi, dan pengelolaan Google Apps Script lengkap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistem Absensi Guru</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  
+  <!-- Modular Stylesheet Include (GAS HTML Service) -->
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- 1. TAMPILAN LOGIN (ADMIN KURIKULUM & PETUGAS PIKET)                      -->
+  <!-- ========================================================================= -->
+  <div id="viewLogin" class="container py-4 py-md-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+        <div class="card-app p-4 p-md-5">
+          <div class="text-center mb-4">
+            <div class="login-logo">
+              <img src="https://uploads.onecompiler.io/44bcuuchx/44bcutd2a/Logo%20SMP.png" alt="Logo Sekolah" />
+            </div>
+            <h4 class="fw-bold mb-1 text-primary">Sistem Absensi Guru</h4>
+            <p class="text-muted small mb-0">Pencatatan Guru Tidak Hadir & Penugasan Kelas</p>
+          </div>
+
+          <div id="alertLogin" class="alert alert-danger d-none" role="alert"></div>
+
+          <form id="formLogin" onsubmit="handleLoginSubmit(event)">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary">Username Petugas</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-person"></i></span>
+                <input type="text" class="form-control border-start-0" id="usernameInput" placeholder="Contoh: kurikulum atau piket" required autocomplete="username">
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-semibold small text-secondary">Password</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
+                <input type="password" class="form-control border-start-0 border-end-0" id="passwordInput" placeholder="Masukkan password" required autocomplete="current-password">
+                <button class="btn btn-outline-secondary border-start-0" type="button" onclick="togglePasswordVisibility()">
+                  <i class="bi bi-eye" id="eyeIcon"></i>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="btnLogin" class="btn btn-primary-custom w-100 py-2.5">
+              <i class="bi bi-box-arrow-in-right me-2"></i> Masuk ke Sistem
+            </button>
+          </form>
+
+          <div class="mt-4 pt-3 border-top text-center">
+            <span class="badge bg-light text-muted border px-2.5 py-1.5 small">
+              <i class="bi bi-shield-check text-primary me-1"></i> Hak Akses: Admin Kurikulum & Petugas Piket
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 2. TAMPILAN DASHBOARD UTAMA (SETELAH LOGIN)                              -->
+  <!-- ========================================================================= -->
+  <div id="viewDashboard" class="d-none">
+
+    <!-- Top App Header -->
+    <header class="brand-header py-3 px-3 px-md-4 mb-4">
+      <div class="container-fluid d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-3">
+          <div class="logo-box">
+            <img src="https://uploads.onecompiler.io/44bcuuchx/44bcutd2a/Logo%20SMP.png" alt="Logo Sekolah" />
+          </div>
+          <div>
+            <h5 class="mb-0 fw-bold text-white">Sistem Absensi Guru & Rekapitulasi</h5>
+            <small class="text-white-50 d-none d-sm-inline">Pencatatan Absensi Terintegrasi Spreadsheet & Drive</small>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          <div class="text-end me-1">
+            <span id="userDisplayName" class="fw-bold d-block text-white" style="font-size:0.875rem;">Nama Petugas</span>
+            <span id="userRoleBadge" class="badge bg-primary text-white">Admin</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-light px-3" onclick="handleLogout()" title="Keluar">
+            <i class="bi bi-box-arrow-right me-1"></i> Keluar
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="container-fluid px-3 px-md-4 pb-5">
+      <div class="row justify-content-center">
+        <div class="col-12 col-xl-10">
+
+          <!-- Nav Tabs (Mobile Friendly Scrollable) -->
+          <ul class="nav nav-pills-custom mb-4" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-form-nav" data-bs-toggle="pill" data-bs-target="#tab-form" type="button" role="tab">
+                <i class="bi bi-pencil-square"></i> Form Input Absensi
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-rekap-nav" data-bs-toggle="pill" data-bs-target="#tab-rekap" type="button" role="tab" onclick="muatDataRekap()">
+                <i class="bi bi-table"></i> Rekapitulasi Absensi
+              </button>
+            </li>
+            <li class="nav-item d-none" id="nav-item-password" role="presentation">
+              <button class="nav-link" id="tab-password-nav" data-bs-toggle="pill" data-bs-target="#tab-password" type="button" role="tab">
+                <i class="bi bi-key"></i> Ganti Password (Admin)
+              </button>
+            </li>
+          </ul>
+
+          <!-- Tab Content -->
+          <div class="tab-content" id="mainTabContent">
+
+            <!-- TAB 1: FORM INPUT ABSENSI -->
+            <div class="tab-pane fade show active" id="tab-form" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="d-flex align-items-center justify-content-between pb-3 mb-4 border-bottom">
+                  <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-file-earmark-plus me-2"></i>Form Ketidakhadiran & Penugasan Guru</h5>
+                    <p class="text-muted small mb-0">Catat guru yang berhalangan hadir beserta rincian tugas per kelas</p>
+                  </div>
+                  <span class="badge bg-light text-primary border px-3 py-2 small d-none d-md-inline-block">
+                    <i class="bi bi-database-check me-1"></i> Sheet 'Rekap'
+                  </span>
+                </div>
+
+                <div id="alertSubmit" class="alert d-none mb-4" role="alert"></div>
+
+                <form id="formPresensi" onsubmit="handleFormSubmit(event)">
+                  <!-- Baris 1: Hari, Tanggal, Guru, Alasan -->
+                  <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Hari</label>
+                      <select class="form-select" id="hari" required>
+                        <option value="Senin">Senin</option>
+                        <option value="Selasa">Selasa</option>
+                        <option value="Rabu">Rabu</option>
+                        <option value="Kamis">Kamis</option>
+                        <option value="Jumat">Jumat</option>
+                        <option value="Sabtu">Sabtu</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Tanggal</label>
+                      <input type="date" class="form-control" id="tanggal" required>
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Nama Guru</label>
+                      <select class="form-select" id="namaGuru" required>
+                        <option value="">-- Memuat daftar guru... --</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Status Kehadiran</label>
+                      <select class="form-select" id="statusKehadiran" required>
+                        <option value="">-- Pilih Status --</option>
+                        <option value="Sakit">Sakit</option>
+                        <option value="Izin">Izin</option>
+                        <option value="Tugas Dinas Luar">Tugas Dinas Luar</option>
+                        <option value="Tanpa Keterangan">Tanpa Keterangan (Alpa)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Upload Bukti File (Max 2MB) -->
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">
+                      <i class="bi bi-cloud-arrow-up text-primary me-1"></i>Upload Bukti Ketidakhadiran (JPG, JPEG, PDF - Maks. 2 MB)
+                    </label>
+
+                    <input type="file" id="fileBukti" class="d-none" accept=".jpg,.jpeg,.pdf">
+
+                    <div class="upload-dropzone" id="uploadDropzone">
+                      <i class="bi bi-cloud-upload text-primary fs-2 d-block mb-1"></i>
+                      <span class="fw-semibold text-primary">Klik untuk memilih file</span> atau seret file ke sini
+                      <small class="text-muted d-block mt-1">Format: JPG, JPEG, atau PDF | Ukuran Maksimal 2 MB</small>
+                    </div>
+
+                    <div id="filePreviewCard" class="file-preview-card d-none mt-2">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-file-earmark-check text-primary fs-4"></i>
+                        <div>
+                          <strong id="previewFilename" class="d-block small text-dark">nama_file.pdf</strong>
+                          <span id="previewFileSize" class="text-muted" style="font-size:0.75rem;">(1.2 MB)</span>
+                        </div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-danger" onclick="resetFileBukti()">
+                        <i class="bi bi-x"></i> Hapus
+                      </button>
+                    </div>
+
+                    <div id="alertUploadFile" class="alert d-none" role="alert"></div>
+                  </div>
+
+                  <!-- Multi-Class Section -->
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <label class="form-label fw-bold mb-0 text-primary">
+                      <i class="bi bi-diagram-3 me-1"></i>Rincian Kelas yang Ditinggalkan
+                    </label>
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="small text-muted">Jumlah Kelas:</span>
+                      <select class="form-select form-select-sm" id="jumlahKelas" style="width: 75px;" onchange="handleJumlahKelasChange()">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Container Dynamic Items -->
+                  <div id="containerKelas" class="mb-3">
+                    <div class="kelas-item-box" id="kelas-box-1">
+                      <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold text-primary small"><i class="bi bi-bookmark-fill me-1"></i> Penugasan Kelas #1</span>
+                      </div>
+                      <div class="row g-2">
+                        <div class="col-12 col-md-3">
+                          <label class="form-label small fw-semibold">Kelas</label>
+                          <select class="form-select form-select-sm select-kelas-item" id="kelas_1" required>
+                            <option value="">Pilih Kelas</option>
+                          </select>
+                        </div>
+                        <div class="col-12 col-md-5">
+                          <label class="form-label small fw-semibold">Mata Pelajaran</label>
+                          <select class="form-select form-select-sm" id="mapel_1" required>
+                            <option value="">Pilih Mata Pelajaran</option>
+                            <option value="Pendidikan Agama Islam dan Budi Pekerti">Pendidikan Agama Islam dan Budi Pekerti</option>
+                            <option value="Pendidikan Pancasila">Pendidikan Pancasila</option>
+                            <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                            <option value="Matematika">Matematika</option>
+                            <option value="Ilmu Pengetahuan Alam">Ilmu Pengetahuan Alam</option>
+                            <option value="Ilmu Pengetahuan Sosial">Ilmu Pengetahuan Sosial</option>
+                            <option value="Bahasa Inggris">Bahasa Inggris</option>
+                            <option value="Pendidikan Seni dan Prakarya">Pendidikan Seni dan Prakarya</option>
+                            <option value="Pendidikan Jasmani Olahraga dan Kesehatan">Pendidikan Jasmani Olahraga dan Kesehatan</option>
+                            <option value="Informatika">Informatika</option>
+                            <option value="Bahasa Sunda">Bahasa Sunda</option>
+                            <option value="Bimbingan Konseling">Bimbingan Konseling</option>
+                          </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                          <label class="form-label small fw-semibold">Jam Awal</label>
+                          <select class="form-select form-select-sm" id="jamAwal_1" required>
+                            <option value="Jam Ke-1">Jam Ke-1</option>
+                            <option value="Jam Ke-2">Jam Ke-2</option>
+                            <option value="Jam Ke-3">Jam Ke-3</option>
+                            <option value="Jam Ke-4">Jam Ke-4</option>
+                            <option value="Jam Ke-5">Jam Ke-5</option>
+                            <option value="Jam Ke-6">Jam Ke-6</option>
+                            <option value="Jam Ke-7">Jam Ke-7</option>
+                            <option value="Jam Ke-8">Jam Ke-8</option>
+                            <option value="Jam Ke-9">Jam Ke-9</option>
+                            <option value="Jam Ke-10">Jam Ke-10</option>
+                          </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                          <label class="form-label small fw-semibold">Jam Akhir</label>
+                          <select class="form-select form-select-sm" id="jamAkhir_1" required>
+                            <option value="Jam Ke-1">Jam Ke-1</option>
+                            <option value="Jam Ke-2" selected>Jam Ke-2</option>
+                            <option value="Jam Ke-3">Jam Ke-3</option>
+                            <option value="Jam Ke-4">Jam Ke-4</option>
+                            <option value="Jam Ke-5">Jam Ke-5</option>
+                            <option value="Jam Ke-6">Jam Ke-6</option>
+                            <option value="Jam Ke-7">Jam Ke-7</option>
+                            <option value="Jam Ke-8">Jam Ke-8</option>
+                            <option value="Jam Ke-9">Jam Ke-9</option>
+                            <option value="Jam Ke-10">Jam Ke-10</option>
+                          </select>
+                        </div>
+                        <div class="col-12 mt-2">
+                          <label class="form-label small fw-semibold">Bentuk Penugasan</label>
+                          <textarea class="form-control form-control-sm" id="penugasan_1" rows="2" placeholder="Tuliskan materi atau instruksi tugas yang ditinggalkan oleh guru..."></textarea>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Catatan Tambahan -->
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">Catatan Tambahan Petugas</label>
+                    <input type="text" class="form-control" id="catatan" placeholder="Keterangan lain (misal: surat dokter menyusul, tugas diserahkan ke ketua kelas)">
+                  </div>
+
+                  <!-- Tombol Simpan -->
+                  <div class="text-end">
+                    <button type="submit" id="btnSimpan" class="btn btn-primary-custom px-4 py-2.5">
+                      <i class="bi bi-send-fill me-1"></i> Simpan Data Absensi
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- TAB 2: REKAPITULASI ABSENSI & CETAK LAPORAN -->
+            <div class="tab-pane fade" id="tab-rekap" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-3 border-bottom gap-2">
+                  <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-journal-text me-2"></i>Rekapitulasi Data Absensi & Penugasan</h5>
+                    <p class="text-muted small mb-0">Laporan Harian, Mingguan, dan Bulanan</p>
+                  </div>
+
+                  <!-- DUA OPSI EKSPOR LAPORAN RESMI (PDF & XLSX) -->
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-primary-custom btn-sm" onclick="handleCetakPDF()">
+                      <i class="bi bi-printer-fill me-1"></i> Cetak Laporan (PDF)
+                    </button>
+                    <button type="button" class="btn btn-success-custom btn-sm" onclick="handleUnduhXLSX()">
+                      <i class="bi bi-file-earmark-excel-fill me-1"></i> Unduh Excel (.xlsx)
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Box Filter -->
+                <div class="p-3 bg-light rounded-3 border mb-4">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Jenis Periode Rekap</label>
+                      <select class="form-select form-select-sm" id="filterRekapTipe" onchange="handleFilterTipeChange()">
+                        <option value="harian" selected>Laporan Harian</option>
+                        <option value="mingguan">Laporan Mingguan (Rentang)</option>
+                        <option value="bulanan">Laporan Bulanan</option>
+                        <option value="semua">Semua Riwayat</option>
+                      </select>
+                    </div>
+
+                    <!-- Filter Harian -->
+                    <div class="col-12 col-md-3" id="boxFilterHarian">
+                      <label class="form-label fw-semibold small">Pilih Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglHarian">
+                    </div>
+
+                    <!-- Filter Mingguan -->
+                    <div class="col-12 col-md-3 d-none" id="boxFilterMingguanMulai">
+                      <label class="form-label fw-semibold small">Dari Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglMulai">
+                    </div>
+                    <div class="col-12 col-md-3 d-none" id="boxFilterMingguanSelesai">
+                      <label class="form-label fw-semibold small">Sampai Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglSelesai">
+                    </div>
+
+                    <!-- Filter Bulanan -->
+                    <div class="col-6 col-md-3 d-none" id="boxFilterBulananBulan">
+                      <label class="form-label fw-semibold small">Bulan</label>
+                      <select class="form-select form-select-sm" id="rekapBulan">
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-2 d-none" id="boxFilterBulananTahun">
+                      <label class="form-label fw-semibold small">Tahun</label>
+                      <input type="number" class="form-control form-control-sm" id="rekapTahun" value="2026">
+                    </div>
+
+                    <div class="col-12 col-md-2">
+                      <button type="button" class="btn btn-primary-custom btn-sm w-100" onclick="muatDataRekap()">
+                        <i class="bi bi-search me-1"></i> Tampilkan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Kartu Ringkasan Statistik -->
+                <div class="row g-2 mb-4 text-center">
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-primary">
+                      <small class="text-muted fw-semibold" id="labelStatTotal">Total Absensi</small>
+                      <div class="stat-val text-primary" id="statTotal">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-warning">
+                      <small class="text-muted fw-semibold">Sakit</small>
+                      <div class="stat-val text-warning" id="statSakit">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-info">
+                      <small class="text-muted fw-semibold">Izin</small>
+                      <div class="stat-val text-info" id="statIzin">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-primary">
+                      <small class="text-muted fw-semibold">Tugas Dinas</small>
+                      <div class="stat-val text-primary" id="statTugas">0</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md">
+                    <div class="stat-card-blue border-danger">
+                      <small class="text-muted fw-semibold">Tanpa Keterangan</small>
+                      <div class="stat-val text-danger" id="statAlpa">0</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tabel Riwayat Sheet Rekap -->
+                <div class="table-responsive border rounded-3" style="max-height: 480px;">
+                  <table class="table table-hover table-striped table-sm mb-0 align-middle table-rekap" id="tabelRekap">
+                    <thead class="table-primary sticky-top" id="theadRekap">
+                      <tr>
+                        <th class="text-center" style="width: 40px;">#</th>
+                        <th>Waktu</th>
+                        <th>Hari / Tanggal</th>
+                        <th>Nama Guru</th>
+                        <th>Status</th>
+                        <th class="text-center">Bukti Drive</th>
+                        <th>Kelas</th>
+                        <th>Jam Ke-</th>
+                        <th>Mata Pelajaran</th>
+                        <th>Bentuk Penugasan</th>
+                        <th>Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbodyRekap">
+                      <tr>
+                        <td colspan="11" class="text-center py-4 text-muted">Silakan tentukan filter dan klik tombol 'Tampilkan'.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- TAB 3: GANTI PASSWORD (ADMIN ONLY) -->
+            <div class="tab-pane fade" id="tab-password" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="pb-3 mb-4 border-bottom">
+                  <h5 class="fw-bold text-primary mb-1"><i class="bi bi-key-fill me-2"></i>Manajemen Password (Khusus Admin)</h5>
+                  <p class="text-muted small mb-0">Ubah password akun Admin Kurikulum atau Petugas Piket</p>
+                </div>
+
+                <div id="alertPassword" class="alert d-none" role="alert"></div>
+
+                <form id="formGantiPass" onsubmit="handleGantiPasswordSubmit(event)" style="max-width: 500px;">
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold small">Pilih Akun yang Ingin Diubah</label>
+                    <select class="form-select" id="targetUserPassword" required>
+                      <option value="kurikulum">Akun Admin Kurikulum (kurikulum)</option>
+                      <option value="piket">Akun Petugas Piket (piket)</option>
+                    </select>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold small">Password Baru</label>
+                    <input type="password" class="form-control" id="newPasswordInput" placeholder="Minimal 4 karakter" required minlength="4">
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">Konfirmasi Password Baru</label>
+                    <input type="password" class="form-control" id="confirmPasswordInput" placeholder="Ulangi password baru" required minlength="4">
+                  </div>
+
+                  <button type="submit" id="btnGantiPass" class="btn btn-primary-custom px-4">
+                    <i class="bi bi-check-circle me-1"></i> Simpan Password Baru
+                  </button>
+                </form>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3. DEDICATED PRINT AREA (HANYA DITAMPILKAN SAAT CETAK DOKUMEN REKAP)      -->
+  <!-- ========================================================================= -->
+  <div id="printArea"></div>
+
+  <!-- FIXED FOOTER -->
+  <footer class="fixed-footer no-print">
+    Copyright - Tim ICT SMP Negeri 1 Ciranjang - Versi 2026.1
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Modular JavaScript Include (GAS HTML Service) -->
+  <?!= include('JavaScript'); ?>
+
+</body>
+</html>

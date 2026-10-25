@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistem Absensi Pegawai - SMP Negeri 1 Ciranjang</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  
+  <!-- SheetJS Library (.xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Modular Stylesheet Include (GAS HTML Service) -->
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+
+  <!-- ========================================================================= -->
+  <!-- 1. TAMPILAN LOGIN (5 KELOMPOK PEGAWAI)                                   -->
+  <!-- ========================================================================= -->
+  <div id="viewLogin" class="container py-4 py-md-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+        <div class="card-app p-4 p-md-5">
+          <div class="text-center mb-4">
+            <div class="login-logo">
+              <img src="https://uploads.onecompiler.io/44bcuuchx/44bcutd2a/Logo%20SMP.png" alt="Logo Sekolah" />
+            </div>
+            <h4 class="fw-bold mb-1 text-primary">Sistem Absensi Pegawai</h4>
+            <p class="text-muted small mb-0">SMP Negeri 1 Ciranjang</p>
+          </div>
+
+          <div id="alertLogin" class="alert alert-danger d-none" role="alert"></div>
+
+          <form id="formLogin" onsubmit="handleLoginSubmit(event)">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small text-secondary">Username Pegawai</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-person"></i></span>
+                <input type="text" class="form-control border-start-0" id="usernameInput" placeholder="Contoh: admin, kepsek, piket, guru01, tendik01" required autocomplete="username">
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-semibold small text-secondary">Password</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
+                <input type="password" class="form-control border-start-0 border-end-0" id="passwordInput" placeholder="Masukkan password" required autocomplete="current-password">
+                <button class="btn btn-outline-secondary border-start-0" type="button" onclick="togglePasswordVisibility()">
+                  <i class="bi bi-eye" id="eyeIcon"></i>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="btnLogin" class="btn btn-primary-custom w-100 py-2.5">
+              <i class="bi bi-box-arrow-in-right me-2"></i> Masuk ke Sistem
+            </button>
+          </form>
+
+          <div class="mt-4 pt-3 border-top text-center">
+            <span class="badge bg-light text-muted border px-2.5 py-1.5 small">
+              <i class="bi bi-shield-check text-primary me-1"></i> Hak Akses: Admin, Piket, Kepsek, Guru & Tendik
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 2. DASHBOARD UTAMA (SETELAH LOGIN)                                      -->
+  <!-- ========================================================================= -->
+  <div id="viewDashboard" class="d-none">
+
+    <!-- Top App Header -->
+    <header class="brand-header py-3 px-3 px-md-4 mb-4">
+      <div class="container-fluid d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-3">
+          <div class="logo-box">
+            <img src="https://uploads.onecompiler.io/44bcuuchx/44bcutd2a/Logo%20SMP.png" alt="Logo Sekolah" />
+          </div>
+          <div>
+            <h5 class="mb-0 fw-bold text-white">Sistem Absensi Pegawai</h5>
+            <small class="text-white-50 d-none d-sm-inline">Pencatatan Absensi 5 Kelompok Pegawai - SMPN 1 Ciranjang</small>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          <div class="text-end me-1">
+            <span id="userDisplayName" class="fw-bold d-block text-white" style="font-size:0.875rem;">Nama Pegawai</span>
+            <span id="userRoleBadge" class="badge bg-primary text-white">Admin</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-light px-3" onclick="handleLogout()" title="Keluar">
+            <i class="bi bi-box-arrow-right me-1"></i> Keluar
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="container-fluid px-3 px-md-4 pb-5">
+      <div class="row justify-content-center">
+        <div class="col-12 col-xl-11">
+
+          <!-- Nav Tabs -->
+          <ul class="nav nav-pills-custom mb-4" id="mainTab" role="tablist">
+            <li class="nav-item" id="nav-item-form" role="presentation">
+              <button class="nav-link active" id="tab-form-nav" data-bs-toggle="pill" data-bs-target="#tab-form" type="button" role="tab">
+                <i class="bi bi-pencil-square"></i> Form Input Absensi
+              </button>
+            </li>
+            <!-- Syarat 11: Rekapitulasi tampil untuk semua 5 roles -->
+            <li class="nav-item" id="nav-item-rekap" role="presentation">
+              <button class="nav-link" id="tab-rekap-nav" data-bs-toggle="pill" data-bs-target="#tab-rekap" type="button" role="tab" onclick="muatDataRekap()">
+                <i class="bi bi-table"></i> Rekapitulasi Absensi
+              </button>
+            </li>
+            <!-- Syarat 12: Ganti Password khusus role ADMIN -->
+            <li class="nav-item d-none" id="nav-item-password" role="presentation">
+              <button class="nav-link" id="tab-password-nav" data-bs-toggle="pill" data-bs-target="#tab-password" type="button" role="tab">
+                <i class="bi bi-key"></i> Ganti Password (Admin)
+              </button>
+            </li>
+            <!-- TAB 4: BUKU PANDUAN PENGGUNA (5 ROLE) -->
+            <li class="nav-item" id="nav-item-panduan" role="presentation">
+              <button class="nav-link" id="tab-panduan-nav" data-bs-toggle="pill" data-bs-target="#tab-panduan" type="button" role="tab">
+                <i class="bi bi-book-half text-warning"></i> Buku Panduan PDF
+              </button>
+            </li>
+          </ul>
+
+          <!-- Tab Content -->
+          <div class="tab-content" id="mainTabContent">
+
+            <!-- TAB 1: FORM INPUT ABSENSI -->
+            <div class="tab-pane fade show active" id="tab-form" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="d-flex align-items-center justify-content-between pb-3 mb-4 border-bottom">
+                  <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-file-earmark-plus me-2"></i>Form Ketidakhadiran Pegawai</h5>
+                    <p class="text-muted small mb-0" id="formSubtitle">Catat ketidakhadiran pegawai SMP Negeri 1 Ciranjang</p>
+                  </div>
+                  <span class="badge bg-light text-primary border px-3 py-2 small d-none d-md-inline-block">
+                    <i class="bi bi-database-check me-1"></i> Sheet 'Rekap'
+                  </span>
+                </div>
+
+                <!-- Pemilih Kategori Target untuk Admin & Piket -->
+                <div id="boxTargetKategoriAdmin" class="mb-4 p-3 bg-light rounded-3 border d-none">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <span class="small fw-bold text-dark"><i class="bi bi-people me-1 text-primary"></i>Kategori Pegawai yang Dientry:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                      <input type="radio" class="btn-check" name="kategoriPegawaiRadio" id="katGuru" value="guru" checked onchange="handleTargetCategoryChange('guru')">
+                      <label class="btn btn-outline-primary" for="katGuru">Guru Pengampu</label>
+
+                      <input type="radio" class="btn-check" name="kategoriPegawaiRadio" id="katKepsek" value="kepsek" onchange="handleTargetCategoryChange('kepsek')">
+                      <label class="btn btn-outline-primary" for="katKepsek">Kepala Sekolah</label>
+
+                      <input type="radio" class="btn-check" name="kategoriPegawaiRadio" id="katTendik" value="tendik" onchange="handleTargetCategoryChange('tendik')">
+                      <label class="btn btn-outline-primary" for="katTendik">Tenaga Kependidikan (Tendik)</label>
+                    </div>
+                  </div>
+                </div>
+
+                <form id="formPresensi" novalidate onsubmit="event.preventDefault(); handleFormSubmit(event); return false;">
+                  <!-- Baris 1: Hari, Tanggal, Nama Pegawai, Status -->
+                  <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">
+                        <i class="bi bi-calendar-event me-1 text-primary"></i>Tanggal Ketidakhadiran
+                      </label>
+                      <input type="date" class="form-control" id="tanggal" onchange="handleTanggalChange()">
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">
+                        <i class="bi bi-calendar2-day me-1 text-primary"></i>Hari (Otomatis)
+                      </label>
+                      <input type="text" class="form-control bg-light fw-bold text-dark" id="hari" readonly placeholder="Otomatis terisi...">
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small" id="labelNamaPegawai">Nama Pegawai</label>
+                      <!-- Untuk Admin & Piket: Dropdown -->
+                      <select class="form-select" id="namaPegawaiSelect">
+                        <option value="">-- Memuat daftar... --</option>
+                      </select>
+                      <!-- Syarat 6: Untuk Kepsek, Guru, Tendik: Hanya nama teks (dropdown dihilangkan) -->
+                      <div id="namaPegawaiFixedBox" class="d-none">
+                        <div class="form-control bg-light fw-bold text-dark" id="namaPegawaiFixedText">-</div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Status Ketidakhadiran</label>
+                      <select class="form-select" id="statusKehadiran">
+                        <option value="Sakit">Sakit</option>
+                        <option value="Izin">Izin</option>
+                        <option value="Tugas Dinas Luar">Tugas Dinas Luar</option>
+                        <option value="Tanpa Keterangan">Tanpa Keterangan (Alpa)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Upload Bukti File (Max 2MB) -->
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">
+                      <i class="bi bi-cloud-arrow-up text-primary me-1"></i>Upload Bukti Ketidakhadiran (JPG, JPEG, PDF - Maks. 2 MB)
+                    </label>
+
+                    <input type="file" id="fileBukti" class="d-none" accept=".jpg,.jpeg,.pdf">
+
+                    <div class="upload-dropzone" id="uploadDropzone">
+                      <i class="bi bi-cloud-upload text-primary fs-2 d-block mb-1"></i>
+                      <span class="fw-semibold text-primary">Klik untuk memilih file</span> atau seret file ke sini
+                      <small class="text-muted d-block mt-1">Format: JPG, JPEG, atau PDF | Ukuran Maksimal 2 MB</small>
+                    </div>
+
+                    <div id="filePreviewCard" class="file-preview-card d-none mt-2">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-file-earmark-check text-primary fs-4"></i>
+                        <div>
+                          <strong id="previewFilename" class="d-block small text-dark">nama_file.pdf</strong>
+                          <span id="previewFileSize" class="text-muted" style="font-size:0.75rem;">(1.2 MB)</span>
+                        </div>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-danger" onclick="resetFileBukti()">
+                        <i class="bi bi-x"></i> Hapus
+                      </button>
+                    </div>
+
+                    <div id="alertUploadFile" class="alert d-none" role="alert"></div>
+                  </div>
+
+                  <!-- Syarat 4: Bagian Multi-Kelas HANYA untuk GURU Pengampu.
+                       Untuk KEPSEK & TENDIK bagian ini otomatis disembunyikan -->
+                  <div id="sectionPenugasanGuru" class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                      <label class="form-label fw-bold mb-0 text-primary">
+                        <i class="bi bi-diagram-3 me-1"></i>Rincian Kelas yang Ditinggalkan & Tugas
+                      </label>
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="small text-muted">Jumlah Kelas:</span>
+                        <select class="form-select form-select-sm" id="jumlahKelas" style="width: 75px;" onchange="handleJumlahKelasChange()">
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                          <option value="6">6</option>
+                          <option value="7">7</option>
+                          <option value="8">8</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div id="containerKelas" class="mb-3">
+                      <!-- Rendered dynamically -->
+                    </div>
+                  </div>
+
+                  <!-- Catatan Tambahan -->
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">Catatan Tambahan</label>
+                    <input type="text" class="form-control" id="catatan" placeholder="Keterangan lain (misal: surat dokter menyusul, koordinasi via WA)">
+                  </div>
+
+                  <!-- Syarat 13: Notifikasi Berhasil Disimpan DIPINDAHKAN KE BAWAH (di atas tombol Simpan) -->
+                  <div id="alertSubmit" class="alert d-none mb-3" role="alert"></div>
+
+                  <!-- Tombol Simpan Data Absensi (Kirim WA otomatis diproses saat tombol ini diklik) -->
+                  <div class="pt-3 border-top d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <small class="text-muted">
+                      <i class="bi bi-whatsapp text-success me-1"></i>Pemberitahuan otomatis terkirim via WhatsApp tujuan saat tombol Simpan ditekan.
+                    </small>
+
+                    <div class="ms-auto">
+                      <!-- Tombol Simpan Data Absensi -->
+                      <button type="button" id="btnSimpan" class="btn btn-primary-custom px-4 py-2.5 fw-bold" onclick="handleFormSubmit(event)">
+                        <i class="bi bi-send-fill me-1"></i> Simpan Data Absensi
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- TAB 2: REKAPITULASI ABSENSI PEGAWAI -->
+            <div class="tab-pane fade" id="tab-rekap" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-3 border-bottom gap-2">
+                  <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-journal-text me-2"></i>Rekapitulasi Absensi Pegawai</h5>
+                    <p class="text-muted small mb-0" id="rekapSubtitle">Laporan Terpisah: Tabel A (Kepsek), Tabel B (Guru), Tabel C (Tendik)</p>
+                  </div>
+
+                  <!-- Syarat 11: Tombol Cetak PDF dan Unduh Excel HANYA untuk Admin & Piket.
+                       Kepsek, Guru, Tendik TIDAK memiliki tombol ini (hanya ditampilkan di web). -->
+                  <div class="d-flex flex-wrap gap-2" id="boxTombolExportRekap">
+                    <button type="button" class="btn btn-primary-custom btn-sm" onclick="handleCetakPDF()">
+                      <i class="bi bi-printer-fill me-1"></i> Cetak Laporan (PDF)
+                    </button>
+                    <button type="button" class="btn btn-success-custom btn-sm" onclick="handleUnduhXLSX()">
+                      <i class="bi bi-file-earmark-excel-fill me-1"></i> Unduh Excel (.xlsx)
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Box Filter -->
+                <div class="p-3 bg-light rounded-3 border mb-4">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-3">
+                      <label class="form-label fw-semibold small">Jenis Periode Rekap</label>
+                      <select class="form-select form-select-sm" id="filterRekapTipe" onchange="handleFilterTipeChange()">
+                        <option value="harian" selected>Laporan Harian</option>
+                        <option value="mingguan" id="optFilterMingguan">Laporan Mingguan (Rentang)</option>
+                        <option value="bulanan" id="optFilterBulanan">Laporan Bulanan</option>
+                        <option value="semua" id="optFilterSemua">Semua Riwayat</option>
+                      </select>
+                    </div>
+
+                    <div class="col-12 col-md-3" id="boxFilterHarian">
+                      <label class="form-label fw-semibold small">Pilih Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglHarian">
+                    </div>
+
+                    <div class="col-12 col-md-3 d-none" id="boxFilterMingguanMulai">
+                      <label class="form-label fw-semibold small">Dari Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglMulai">
+                    </div>
+                    <div class="col-12 col-md-3 d-none" id="boxFilterMingguanSelesai">
+                      <label class="form-label fw-semibold small">Sampai Tanggal</label>
+                      <input type="date" class="form-control form-control-sm" id="rekapTglSelesai">
+                    </div>
+
+                    <div class="col-6 col-md-3 d-none" id="boxFilterBulananBulan">
+                      <label class="form-label fw-semibold small">Bulan</label>
+                      <select class="form-select form-select-sm" id="rekapBulan">
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-2 d-none" id="boxFilterBulananTahun">
+                      <label class="form-label fw-semibold small">Tahun</label>
+                      <input type="number" class="form-control form-control-sm" id="rekapTahun" value="2026">
+                    </div>
+
+                    <div class="col-12 col-md-2">
+                      <button type="button" class="btn btn-primary-custom btn-sm w-100" onclick="muatDataRekap()">
+                        <i class="bi bi-search me-1"></i> Tampilkan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Kartu Ringkasan Statistik -->
+                <div class="row g-2 mb-4 text-center">
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-primary">
+                      <small class="text-muted fw-semibold">Total Pegawai Absen</small>
+                      <div class="stat-val text-primary" id="statTotal">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-warning">
+                      <small class="text-muted fw-semibold">Sakit</small>
+                      <div class="stat-val text-warning" id="statSakit">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-info">
+                      <small class="text-muted fw-semibold">Izin</small>
+                      <div class="stat-val text-info" id="statIzin">0</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md">
+                    <div class="stat-card-blue border-primary">
+                      <small class="text-muted fw-semibold">Tugas Dinas</small>
+                      <div class="stat-val text-primary" id="statTugas">0</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md">
+                    <div class="stat-card-blue border-danger">
+                      <small class="text-muted fw-semibold">Tanpa Keterangan</small>
+                      <div class="stat-val text-danger" id="statAlpa">0</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Syarat 7: Pemisahan Tampilan Rekap Masing-Masing Role (Tabel A, B, C) -->
+                <div id="containerTabelRekap">
+                  <!-- TABEL A: KEPALA SEKOLAH -->
+                  <div class="mb-4" id="sectionTabelKepsek">
+                    <div class="d-flex align-items-center justify-content-between p-2.5 px-3 bg-dark text-white rounded-top">
+                      <span class="fw-bold small"><i class="bi bi-award-fill me-1 text-warning"></i>Tabel A: Rekapitulasi Kepala Sekolah</span>
+                      <span class="badge bg-secondary" id="badgeCountKepsek">0 Data</span>
+                    </div>
+                    <div class="table-responsive border border-top-0 rounded-bottom">
+                      <table class="table table-sm table-hover align-middle mb-0" id="tableKepsek">
+                        <thead class="table-light">
+                          <tr>
+                            <th class="text-center w-40px">#</th>
+                            <th>Hari / Tanggal</th>
+                            <th>Nama Kepala Sekolah</th>
+                            <th>Status</th>
+                            <th class="text-center">Bukti Drive</th>
+                            <th>Catatan</th>
+                          </tr>
+                        </thead>
+                        <tbody id="tbodyKepsek">
+                          <tr><td colspan="6" class="text-center text-muted py-3">Tidak ada catatan Kepala Sekolah.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- TABEL B: GURU PENGAMPU -->
+                  <div class="mb-4" id="sectionTabelGuru">
+                    <div class="d-flex align-items-center justify-content-between p-2.5 px-3 bg-primary text-white rounded-top">
+                      <span class="fw-bold small"><i class="bi bi-person-video3 me-1"></i>Tabel B: Rekapitulasi Guru Pengampu & Penugasan</span>
+                      <span class="badge bg-light text-primary" id="badgeCountGuru">0 Penugasan</span>
+                    </div>
+                    <div class="table-responsive border border-top-0 rounded-bottom">
+                      <table class="table table-sm table-hover align-middle mb-0" id="tableGuru">
+                        <thead class="table-light" id="theadGuru">
+                          <!-- Generated dynamically -->
+                        </thead>
+                        <tbody id="tbodyGuru">
+                          <tr><td colspan="10" class="text-center text-muted py-3">Tidak ada catatan Guru.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- TABEL C: TENAGA KEPENDIDIKAN (TENDIK) -->
+                  <div class="mb-4" id="sectionTabelTendik">
+                    <div class="d-flex align-items-center justify-content-between p-2.5 px-3 bg-secondary text-white rounded-top">
+                      <span class="fw-bold small"><i class="bi bi-people-fill me-1 text-warning"></i>Tabel C: Rekapitulasi Tenaga Kependidikan (Tendik)</span>
+                      <span class="badge bg-light text-dark" id="badgeCountTendik">0 Data</span>
+                    </div>
+                    <div class="table-responsive border border-top-0 rounded-bottom">
+                      <table class="table table-sm table-hover align-middle mb-0" id="tableTendik">
+                        <thead class="table-light">
+                          <tr>
+                            <th class="text-center w-40px">#</th>
+                            <th>Hari / Tanggal</th>
+                            <th>Nama Tenaga Kependidikan</th>
+                            <th>Status</th>
+                            <th class="text-center">Bukti Drive</th>
+                            <th>Catatan</th>
+                          </tr>
+                        </thead>
+                        <tbody id="tbodyTendik">
+                          <tr><td colspan="6" class="text-center text-muted py-3">Tidak ada catatan Tenaga Kependidikan.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- TAB 3: GANTI PASSWORD (KHUSUS ROLE ADMIN) -->
+            <!-- Syarat 12: Memilih akun sesuai Nama, tampilkan Role & Nama Lengkap Readonly -->
+            <div class="tab-pane fade" id="tab-password" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="pb-3 mb-4 border-bottom">
+                  <h5 class="fw-bold text-primary mb-1"><i class="bi bi-key-fill me-2"></i>Manajemen Password (Khusus Admin)</h5>
+                  <p class="text-muted small mb-0">Perbarui password akun pegawai sesuai Nama & Username</p>
+                </div>
+
+                <div id="alertPassword" class="alert d-none" role="alert"></div>
+
+                <form id="formGantiPass" onsubmit="handleGantiPasswordSubmit(event)" style="max-width: 550px;">
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold small">Pilih Pegawai / Akun</label>
+                    <select class="form-select" id="targetUserPassword" required onchange="handleTargetPasswordChange()">
+                      <option value="">-- Memuat daftar akun... --</option>
+                    </select>
+                  </div>
+
+                  <!-- Tampilan Readonly Role dan Nama Lengkap -->
+                  <div class="row g-2 mb-3 p-2.5 bg-light rounded-3 border">
+                    <div class="col-8">
+                      <label class="form-label small text-muted mb-0">Nama Lengkap Pegawai</label>
+                      <div class="fw-bold text-dark small" id="readonlyNamaLengkap">-</div>
+                    </div>
+                    <div class="col-4">
+                      <label class="form-label small text-muted mb-0">Role Pegawai</label>
+                      <div><span class="badge bg-primary text-white" id="readonlyRole">-</span></div>
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold small">Password Baru</label>
+                    <input type="password" class="form-control" id="newPasswordInput" placeholder="Minimal 4 karakter" required minlength="4">
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold small">Konfirmasi Password Baru</label>
+                    <input type="password" class="form-control" id="confirmPasswordInput" placeholder="Ulangi password baru" required minlength="4">
+                  </div>
+
+                  <button type="submit" id="btnGantiPass" class="btn btn-primary-custom px-4">
+                    <i class="bi bi-check-circle me-1"></i> Simpan Password Baru
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- TAB 4: BUKU PANDUAN PENGGUNA (5 ROLE) -->
+            <div class="tab-pane fade" id="tab-panduan" role="tabpanel">
+              <div class="card-app p-4">
+                <div class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-4 border-bottom gap-3">
+                  <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-book-half me-2 text-warning"></i>Buku Panduan Pengoperasian Sistem Absensi</h5>
+                    <p class="text-muted small mb-0">Petunjuk resmi bagi 5 kelompok pengguna: Admin, Piket, Kepsek, Guru & Tendik</p>
+                  </div>
+                  <button type="button" class="btn btn-warning fw-bold text-dark px-3 shadow-sm" onclick="handleCetakPanduanPDF()">
+                    <i class="bi bi-printer-fill me-1"></i> Cetak / Simpan PDF Panduan
+                  </button>
+                </div>
+
+                <div class="row g-4">
+                  <!-- Matriks Hak Akses -->
+                  <div class="col-12">
+                    <div class="table-responsive border rounded-3">
+                      <table class="table table-sm align-middle mb-0 text-start">
+                        <thead class="table-light">
+                          <tr>
+                            <th>Kelompok Pengguna</th>
+                            <th class="text-center">Form Input Absensi</th>
+                            <th class="text-center">Rincian Multi-Kelas</th>
+                            <th class="text-center">Akses Rekapitulasi</th>
+                            <th class="text-center">Cetak PDF / Excel</th>
+                            <th class="text-center">Ganti Password</th>
+                          </tr>
+                        </thead>
+                        <tbody class="small">
+                          <tr>
+                            <td class="fw-bold text-primary"><i class="bi bi-shield-check me-1"></i>ADMIN</td>
+                            <td class="text-center"><span class="badge bg-success">Semua Pegawai</span></td>
+                            <td class="text-center">Dapat dipilih jika target Guru</td>
+                            <td class="text-center"><span class="badge bg-primary">Lengkap (A, B, C)</span></td>
+                            <td class="text-center fw-bold text-success">Ya (Semua)</td>
+                            <td class="text-center fw-bold text-success">Ya (Semua User)</td>
+                          </tr>
+                          <tr>
+                            <td class="fw-bold text-secondary"><i class="bi bi-person-badge me-1"></i>PIKET</td>
+                            <td class="text-center"><span class="badge bg-success">Semua Pegawai</span></td>
+                            <td class="text-center">Dapat dipilih jika target Guru</td>
+                            <td class="text-center"><span class="badge bg-secondary">Harian Saja</span></td>
+                            <td class="text-center fw-bold text-success">Ya (Harian)</td>
+                            <td class="text-center text-muted">Tidak</td>
+                          </tr>
+                          <tr>
+                            <td class="fw-bold text-dark"><i class="bi bi-award me-1"></i>KEPSEK</td>
+                            <td class="text-center"><span class="badge bg-dark">Mandiri</span></td>
+                            <td class="text-center text-muted">Tidak (Disembunyikan)</td>
+                            <td class="text-center"><span class="badge bg-dark">Mandiri (Tabel A)</span></td>
+                            <td class="text-center text-muted">Web Saja</td>
+                            <td class="text-center text-muted">Tidak</td>
+                          </tr>
+                          <tr>
+                            <td class="fw-bold text-success"><i class="bi bi-person-video3 me-1"></i>GURU</td>
+                            <td class="text-center"><span class="badge bg-success">Mandiri</span></td>
+                            <td class="text-center fw-bold text-success">Wajib Kelas & Mapel</td>
+                            <td class="text-center"><span class="badge bg-success">Mandiri (Tabel B)</span></td>
+                            <td class="text-center text-muted">Web Saja</td>
+                            <td class="text-center text-muted">Tidak</td>
+                          </tr>
+                          <tr>
+                            <td class="fw-bold text-warning"><i class="bi bi-people me-1"></i>TENDIK</td>
+                            <td class="text-center"><span class="badge bg-warning text-dark">Mandiri</span></td>
+                            <td class="text-center text-muted">Tidak (Disembunyikan)</td>
+                            <td class="text-center"><span class="badge bg-warning text-dark">Mandiri (Tabel C)</span></td>
+                            <td class="text-center text-muted">Web Saja</td>
+                            <td class="text-center text-muted">Tidak</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Ringkasan Alur Kerja Per Role -->
+                  <div class="col-12 col-md-6">
+                    <div class="p-3 bg-light rounded-3 border">
+                      <h6 class="fw-bold text-primary mb-2"><i class="bi bi-1-circle-fill me-1"></i>Administrator & Piket</h6>
+                      <ul class="small text-muted ps-3 mb-0">
+                        <li><strong>Admin:</strong> Memiliki wewenang mengganti password akun siapapun melalui menu Ganti Password. Menampilkan Nama Lengkap dan Role secara otomatis (readonly).</li>
+                        <li><strong>Piket:</strong> Menginput ketidakhadiran harian guru/pegawai. Untuk guru, wajib memasukkan kelas, jam, mapel, dan tugas siswa. Akses rekap terbatas pada filter Harian.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <div class="p-3 bg-light rounded-3 border">
+                      <h6 class="fw-bold text-success mb-2"><i class="bi bi-2-circle-fill me-1"></i>Kepsek, Guru, & Tendik</h6>
+                      <ul class="small text-muted ps-3 mb-0">
+                        <li><strong>Kepsek & Tendik:</strong> Form ringkas (nama otomatis terkunci, tanpa isian kelas/mapel/tugas). Data rekap pribadi tampil di web pada Tabel A (Kepsek) dan Tabel C (Tendik).</li>
+                        <li><strong>Guru Pengampu:</strong> Form dilengkapi multi-kelas penugasan. Notifikasi WhatsApp otomatis terkirim begitu tombol Simpan ditekan.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. PRINT AREA (Kop & Format Dokumen) -->
+  <div id="printArea"></div>
+
+  <!-- FIXED FOOTER -->
+  <footer class="fixed-footer no-print">
+    Copyright © Tim ICT SMP Negeri 1 Ciranjang • Sistem Absensi Pegawai Versi 2026.3
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Modular JavaScript Include (GAS HTML Service) -->
+  <?!= include('JavaScript'); ?>
+
+</body>
+</html>

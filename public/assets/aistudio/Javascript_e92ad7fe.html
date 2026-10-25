@@ -1,0 +1,1200 @@
+<script>
+  /**
+   * =========================================================================
+   * LOGIKA CLIENT-SIDE JAVASCRIPT - SISTEM ABSENSI & REKAPITULASI
+   * =========================================================================
+   */
+
+  const NO_WA_TUJUAN = "6285779156487";
+  const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+  let currentSelectedFile = null;
+  let currentUserSession = null;
+  let currentRekapRecords = [];
+
+  let listGuru = [];
+  let listKelas = [];
+
+  const listMapel = [
+    "Pendidikan Agama Islam dan Budi Pekerti", "Pendidikan Pancasila", "Bahasa Indonesia",
+    "Matematika", "Ilmu Pengetahuan Alam", "Ilmu Pengetahuan Sosial", "Bahasa Inggris",
+    "Pendidikan Seni dan Prakarya", "Pendidikan Jasmani Olahraga dan Kesehatan", "Informatika", "Bahasa Sunda", "Bimbingan Konseling"
+  ];
+
+  document.addEventListener("DOMContentLoaded", function() {
+    const now = new Date();
+    const tglInput = document.getElementById('tanggal');
+    if (tglInput) tglInput.valueAsDate = now;
+
+    const rekapHarian = document.getElementById('rekapTglHarian');
+    if (rekapHarian) rekapHarian.valueAsDate = now;
+
+    const rekapMulai = document.getElementById('rekapTglMulai');
+    if (rekapMulai) rekapMulai.valueAsDate = now;
+
+    const rekapSelesai = document.getElementById('rekapTglSelesai');
+    if (rekapSelesai) rekapSelesai.valueAsDate = now;
+
+    const rekapBulan = document.getElementById('rekapBulan');
+    if (rekapBulan) rekapBulan.value = (now.getMonth() + 1).toString();
+
+    const rekapTahun = document.getElementById('rekapTahun');
+    if (rekapTahun) rekapTahun.value = now.getFullYear().toString();
+
+    const savedUser = sessionStorage.getItem("presensi_user_v3") || localStorage.getItem("presensi_user_v3");
+    if (savedUser) {
+      try {
+        currentUserSession = JSON.parse(savedUser);
+        tampilkanDashboard();
+      } catch (e) {
+        tampilkanLogin();
+      }
+    } else {
+      tampilkanLogin();
+    }
+
+    inisialisasiDragAndDrop();
+  });
+
+  function togglePasswordVisibility() {
+    const pass = document.getElementById("passwordInput");
+    const icon = document.getElementById("eyeIcon");
+    if (pass.type === "password") {
+      pass.type = "text";
+      icon.className = "bi bi-eye-slash";
+    } else {
+      pass.type = "password";
+      icon.className = "bi bi-eye";
+    }
+  }
+
+  function handleLoginSubmit(event) {
+    event.preventDefault();
+    const username = document.getElementById("usernameInput").value.trim();
+    const password = document.getElementById("passwordInput").value.trim();
+    const alertBox = document.getElementById("alertLogin");
+    const btnLogin = document.getElementById("btnLogin");
+
+    if (!username || !password) {
+      alertBox.className = "alert alert-warning py-2 small";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Masukkan username dan password!";
+      alertBox.classList.remove("d-none");
+      return;
+    }
+
+    btnLogin.disabled = true;
+    btnLogin.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Verifikasi...";
+    alertBox.classList.add("d-none");
+
+    google.script.run
+      .withSuccessHandler(function(response) {
+        btnLogin.disabled = false;
+        btnLogin.innerHTML = "<i class='bi bi-box-arrow-in-right me-2'></i> Masuk ke Sistem";
+
+        if (response && response.success) {
+          currentUserSession = response.user;
+          sessionStorage.setItem("presensi_user_v3", JSON.stringify(currentUserSession));
+          tampilkanDashboard();
+        } else {
+          alertBox.className = "alert alert-danger py-2 small";
+          alertBox.innerHTML = "<i class='bi bi-x-circle me-1'></i> " + (response.message || "Login gagal.");
+          alertBox.classList.remove("d-none");
+        }
+      })
+      .withFailureHandler(function(err) {
+        btnLogin.disabled = false;
+        btnLogin.innerHTML = "<i class='bi bi-box-arrow-in-right me-2'></i> Masuk ke Sistem";
+        alertBox.className = "alert alert-danger py-2 small";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-octagon me-1'></i> Terjadi kesalahan: " + err.message;
+        alertBox.classList.remove("d-none");
+      })
+      .loginPengguna(username, password);
+  }
+
+  function tampilkanLogin() {
+    document.getElementById("viewLogin").classList.remove("d-none");
+    document.getElementById("viewDashboard").classList.add("d-none");
+    currentUserSession = null;
+    sessionStorage.removeItem("presensi_user_v3");
+  }
+
+  function tampilkanDashboard() {
+    document.getElementById("viewLogin").classList.add("d-none");
+    document.getElementById("viewDashboard").classList.remove("d-none");
+
+    const namaSpan = document.getElementById("userDisplayName");
+    const roleBadge = document.getElementById("userRoleBadge");
+    const tabPasswordNav = document.getElementById("nav-item-password");
+
+    if (currentUserSession) {
+      namaSpan.textContent = currentUserSession.nama || currentUserSession.username;
+      if (currentUserSession.role === "admin") {
+        roleBadge.className = "badge bg-primary px-2.5 py-1 text-white";
+        roleBadge.innerHTML = "<i class='bi bi-shield-check me-1'></i>Admin Kurikulum";
+        if (tabPasswordNav) tabPasswordNav.classList.remove("d-none");
+      } else {
+        roleBadge.className = "badge bg-secondary px-2.5 py-1 text-white";
+        roleBadge.innerHTML = "<i class='bi bi-person-badge me-1'></i>Petugas Piket";
+        if (tabPasswordNav) tabPasswordNav.classList.add("d-none");
+      }
+    }
+
+    muatDaftarGuruDanKelas();
+  }
+
+  function handleLogout() {
+    currentUserSession = null;
+    sessionStorage.removeItem("presensi_user_v3");
+    localStorage.removeItem("presensi_user_v3");
+    tampilkanLogin();
+  }
+
+  function muatDaftarGuruDanKelas() {
+    const selGuru = document.getElementById("namaGuru");
+    selGuru.innerHTML = "<option value=''>-- Memuat daftar guru dari spreadsheet... --</option>";
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          listGuru = res.daftarGuru || [];
+          listKelas = res.daftarKelas || [];
+          renderOpsiGuru();
+          renderSemuaDropdownKelas();
+        } else {
+          selGuru.innerHTML = "<option value=''>-- Gagal memuat data dari Spreadsheet --</option>";
+        }
+      })
+      .withFailureHandler(function(err) {
+        selGuru.innerHTML = "<option value=''>-- Kesalahan koneksi ke Spreadsheet --</option>";
+      })
+      .getDaftarGuruDanKelas();
+  }
+
+  function renderOpsiGuru() {
+    const selGuru = document.getElementById("namaGuru");
+    selGuru.innerHTML = "<option value=''>-- Pilih Nama Guru --</option>";
+    listGuru.forEach(function(nama) {
+      const opt = document.createElement("option");
+      opt.value = nama;
+      opt.textContent = nama;
+      selGuru.appendChild(opt);
+    });
+  }
+
+  function renderSemuaDropdownKelas() {
+    const selects = document.querySelectorAll(".select-kelas-item");
+    selects.forEach(function(sel) {
+      const curVal = sel.value;
+      sel.innerHTML = "<option value=''>Pilih Kelas</option>";
+      listKelas.forEach(function(kls) {
+        const opt = document.createElement("option");
+        opt.value = kls;
+        opt.textContent = kls;
+        if (curVal === kls) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  function handleJumlahKelasChange() {
+    const targetCount = parseInt(document.getElementById("jumlahKelas").value, 10);
+    const container = document.getElementById("containerKelas");
+    const currentBoxes = container.querySelectorAll(".kelas-item-box");
+    const currentCount = currentBoxes.length;
+
+    if (targetCount > currentCount) {
+      for (let i = currentCount + 1; i <= targetCount; i++) {
+        tambahItemKelas(i);
+      }
+    } else if (targetCount < currentCount) {
+      for (let i = currentCount; i > targetCount; i--) {
+        const itemToRemove = document.getElementById("kelas-box-" + i);
+        if (itemToRemove) itemToRemove.remove();
+      }
+    }
+  }
+
+  function tambahItemKelas(index) {
+    const container = document.getElementById("containerKelas");
+    const box = document.createElement("div");
+    box.className = "kelas-item-box";
+    box.id = "kelas-box-" + index;
+
+    let kelasOptions = "<option value=''>Pilih Kelas</option>";
+    listKelas.forEach(function(k) {
+      kelasOptions += "<option value='" + k + "'>" + k + "</option>";
+    });
+
+    let mapelOptions = "<option value=''>Pilih Mata Pelajaran</option>";
+    listMapel.forEach(function(m) {
+      mapelOptions += "<option value='" + m + "'>" + m + "</option>";
+    });
+
+    box.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-bold text-primary small"><i class="bi bi-bookmark-fill me-1"></i> Penugasan Kelas #${index}</span>
+        ${index > 1 ? `<button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="hapusItemKelas(${index})"><i class="bi bi-trash"></i> Hapus</button>` : ''}
+      </div>
+      <div class="row g-2">
+        <div class="col-12 col-md-3">
+          <label class="form-label small fw-semibold">Kelas</label>
+          <select class="form-select form-select-sm select-kelas-item" id="kelas_${index}" required>
+            ${kelasOptions}
+          </select>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label small fw-semibold">Mata Pelajaran</label>
+          <select class="form-select form-select-sm" id="mapel_${index}" required>
+            ${mapelOptions}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold">Jam Awal</label>
+          <select class="form-select form-select-sm" id="jamAwal_${index}" required>
+            <option value="Jam Ke-1">Jam Ke-1</option>
+            <option value="Jam Ke-2">Jam Ke-2</option>
+            <option value="Jam Ke-3">Jam Ke-3</option>
+            <option value="Jam Ke-4">Jam Ke-4</option>
+            <option value="Jam Ke-5">Jam Ke-5</option>
+            <option value="Jam Ke-6">Jam Ke-6</option>
+            <option value="Jam Ke-7">Jam Ke-7</option>
+            <option value="Jam Ke-8">Jam Ke-8</option>
+            <option value="Jam Ke-9">Jam Ke-9</option>
+            <option value="Jam Ke-10">Jam Ke-10</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold">Jam Akhir</label>
+          <select class="form-select form-select-sm" id="jamAkhir_${index}" required>
+            <option value="Jam Ke-1">Jam Ke-1</option>
+            <option value="Jam Ke-2" selected>Jam Ke-2</option>
+            <option value="Jam Ke-3">Jam Ke-3</option>
+            <option value="Jam Ke-4">Jam Ke-4</option>
+            <option value="Jam Ke-5">Jam Ke-5</option>
+            <option value="Jam Ke-6">Jam Ke-6</option>
+            <option value="Jam Ke-7">Jam Ke-7</option>
+            <option value="Jam Ke-8">Jam Ke-8</option>
+            <option value="Jam Ke-9">Jam Ke-9</option>
+            <option value="Jam Ke-10">Jam Ke-10</option>
+          </select>
+        </div>
+        <div class="col-12 mt-2">
+          <label class="form-label small fw-semibold">Bentuk Penugasan</label>
+          <textarea class="form-control form-control-sm" id="penugasan_${index}" rows="2" placeholder="Tuliskan materi atau instruksi tugas yang ditinggalkan oleh guru..."></textarea>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(box);
+  }
+
+  function hapusItemKelas(index) {
+    const box = document.getElementById("kelas-box-" + index);
+    if (box) box.remove();
+    const container = document.getElementById("containerKelas");
+    const remaining = container.querySelectorAll(".kelas-item-box").length;
+    document.getElementById("jumlahKelas").value = remaining;
+  }
+
+  function inisialisasiDragAndDrop() {
+    const dropzone = document.getElementById("uploadDropzone");
+    const fileInput = document.getElementById("fileBukti");
+
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", function(e) {
+      if (this.files && this.files[0]) {
+        prosesFileTerpilih(this.files[0]);
+      }
+    });
+
+    ["dragenter", "dragover"].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+      });
+    });
+
+    dropzone.addEventListener("drop", e => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        prosesFileTerpilih(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  function prosesFileTerpilih(file) {
+    const alertUpload = document.getElementById("alertUploadFile");
+    alertUpload.classList.add("d-none");
+
+    const validExtensions = ["jpg", "jpeg", "pdf"];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+
+    if (!validExtensions.includes(fileExt)) {
+      alertUpload.className = "alert alert-danger py-2 small mt-2";
+      alertUpload.innerHTML = "<i class='bi bi-exclamation-circle me-1'></i> Format file tidak didukung! Hanya JPG, JPEG, atau PDF.";
+      alertUpload.classList.remove("d-none");
+      resetFileBukti();
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      alertUpload.className = "alert alert-danger py-2 small mt-2";
+      alertUpload.innerHTML = "<i class='bi bi-exclamation-circle me-1'></i> Ukuran file melebihi batas 2 MB! (" + (file.size / (1024*1024)).toFixed(2) + " MB)";
+      alertUpload.classList.remove("d-none");
+      resetFileBukti();
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      currentSelectedFile = {
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+        base64: e.target.result
+      };
+
+      document.getElementById("uploadDropzone").classList.add("d-none");
+      document.getElementById("filePreviewCard").classList.remove("d-none");
+      document.getElementById("previewFilename").textContent = file.name;
+      document.getElementById("previewFileSize").textContent = "(" + (file.size / 1024).toFixed(1) + " KB)";
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function resetFileBukti() {
+    currentSelectedFile = null;
+    document.getElementById("fileBukti").value = "";
+    document.getElementById("uploadDropzone").classList.remove("d-none");
+    document.getElementById("filePreviewCard").classList.add("d-none");
+  }
+
+  function pastikanFileTerbaca() {
+    return new Promise(function(resolve) {
+      const fileInput = document.getElementById("fileBukti");
+      if (currentSelectedFile && currentSelectedFile.base64) {
+        resolve(currentSelectedFile);
+      } else if (fileInput && fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          currentSelectedFile = {
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+            base64: e.target.result
+          };
+          resolve(currentSelectedFile);
+        };
+        reader.onerror = function() {
+          resolve(null);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        resolve(null);
+      }
+    });
+  }
+
+  async function handleFormSubmit(event) {
+    event.preventDefault();
+    const btnSubmit = document.getElementById("btnSimpan");
+    const alertBox = document.getElementById("alertSubmit");
+    alertBox.classList.add("d-none");
+
+    const namaGuru = document.getElementById("namaGuru").value;
+    const statusKehadiran = document.getElementById("statusKehadiran").value;
+    const tanggal = document.getElementById("tanggal").value;
+    const hari = document.getElementById("hari").value;
+    const catatan = document.getElementById("catatan").value;
+
+    if (!namaGuru || !statusKehadiran || !tanggal) {
+      alertBox.className = "alert alert-warning py-2 small";
+      alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Harap lengkapi data absensi!";
+      alertBox.classList.remove("d-none");
+      return;
+    }
+
+    const container = document.getElementById("containerKelas");
+    const boxes = container.querySelectorAll(".kelas-item-box");
+    const kelasItems = [];
+
+    for (let i = 0; i < boxes.length; i++) {
+      const idx = boxes[i].id.replace("kelas-box-", "");
+      const kls = document.getElementById("kelas_" + idx).value;
+      const mpl = document.getElementById("mapel_" + idx).value;
+      const jAwal = document.getElementById("jamAwal_" + idx).value;
+      const jAkhir = document.getElementById("jamAkhir_" + idx).value;
+      const tugas = document.getElementById("penugasan_" + idx).value;
+
+      if (!kls || !mpl) {
+        alertBox.className = "alert alert-warning py-2 small";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-triangle me-1'></i> Harap lengkapi Kelas & Mapel baris #" + (i+1);
+        alertBox.classList.remove("d-none");
+        return;
+      }
+
+      kelasItems.push({
+        kelas: kls,
+        mapel: mpl,
+        jamAwal: jAwal,
+        jamAkhir: jAkhir,
+        penugasan: tugas
+      });
+    }
+
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Menyimpan Absensi & Mengunggah File...";
+
+    const validFileData = await pastikanFileTerbaca();
+
+    const formData = {
+      namaGuru: namaGuru,
+      statusKehadiran: statusKehadiran,
+      tanggal: tanggal,
+      hari: hari,
+      catatan: catatan,
+      kelasItems: kelasItems
+    };
+
+    google.script.run
+      .withSuccessHandler(function(response) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = "<i class='bi bi-send-fill me-1'></i> Simpan Data Absensi";
+
+        if (response && response.success) {
+          alertBox.className = "alert alert-success py-3 shadow-xs";
+          let successHtml = `<strong><i class='bi bi-check-circle-fill me-1'></i> Berhasil!</strong> ${response.message}`;
+          if (response.linkDrive && response.linkDrive !== "-") {
+            successHtml += `<div class='mt-2'><a href='${response.linkDrive}' target='_blank' class='btn btn-sm btn-outline-primary bg-white'><i class='bi bi-folder-check me-1'></i> Buka Bukti di Google Drive</a></div>`;
+          }
+          alertBox.innerHTML = successHtml;
+          alertBox.classList.remove("d-none");
+
+          siapkanKirimWA(formData, response.linkDrive);
+
+          document.getElementById("formPresensi").reset();
+          resetFileBukti();
+          document.getElementById("containerKelas").innerHTML = "";
+          tambahItemKelas(1);
+          document.getElementById("jumlahKelas").value = 1;
+          document.getElementById("tanggal").valueAsDate = new Date();
+        } else {
+          alertBox.className = "alert alert-danger py-2 small";
+          alertBox.innerHTML = "<i class='bi bi-x-circle me-1'></i> " + (response.message || "Gagal menyimpan data.");
+          alertBox.classList.remove("d-none");
+        }
+      })
+      .withFailureHandler(function(err) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = "<i class='bi bi-send-fill me-1'></i> Simpan Data Absensi";
+        alertBox.className = "alert alert-danger py-2 small";
+        alertBox.innerHTML = "<i class='bi bi-exclamation-octagon me-1'></i> Terjadi kesalahan: " + err.message;
+        alertBox.classList.remove("d-none");
+      })
+      .simpanPresensi(formData, validFileData);
+  }
+
+  function siapkanKirimWA(formData, linkDrive) {
+    let pesan = `*PEMBERITAHUAN GURU TIDAK HADIR & PENUGASAN*\n\n`;
+    pesan += `Hari / Tanggal : ${formData.hari}, ${formData.tanggal}\n`;
+    pesan += `Nama Guru      : *${formData.namaGuru}*\n`;
+    pesan += `Keterangan     : *${formData.statusKehadiran}*\n`;
+    if (linkDrive && linkDrive !== "-") {
+      pesan += `Bukti Drive    : ${linkDrive}\n`;
+    }
+    pesan += `\n*Rincian Penugasan Kelas:*\n`;
+
+    formData.kelasItems.forEach((item, idx) => {
+      pesan += `\n${idx+1}. Kelas: *${item.kelas}* (${item.jamAwal} - ${item.jamAkhir})\n`;
+      pesan += `   Mapel: ${item.mapel}\n`;
+      pesan += `   Tugas: ${item.penugasan || "-"}\n`;
+    });
+
+    if (formData.catatan) {
+      pesan += `\nCatatan: ${formData.catatan}\n`;
+    }
+
+    pesan += `\n_Dicatat oleh: ${currentUserSession ? currentUserSession.nama : 'Petugas'}_`;
+
+    const waUrl = `https://wa.me/${NO_WA_TUJUAN}?text=${encodeURIComponent(pesan)}`;
+    
+    const alertBox = document.getElementById("alertSubmit");
+    const waBtn = document.createElement("a");
+    waBtn.href = waUrl;
+    waBtn.target = "_blank";
+    waBtn.className = "btn btn-success btn-sm mt-2 ms-2 fw-semibold";
+    waBtn.innerHTML = "<i class='bi bi-whatsapp me-1'></i> Kirim Laporan ke WhatsApp Piket";
+    alertBox.appendChild(waBtn);
+  }
+
+  function handleFilterTipeChange() {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    
+    const boxHarian = document.getElementById("boxFilterHarian");
+    const boxMingguanMulai = document.getElementById("boxFilterMingguanMulai");
+    const boxMingguanSelesai = document.getElementById("boxFilterMingguanSelesai");
+    const boxBulan = document.getElementById("boxFilterBulananBulan");
+    const boxTahun = document.getElementById("boxFilterBulananTahun");
+
+    boxHarian.classList.add("d-none");
+    boxMingguanMulai.classList.add("d-none");
+    boxMingguanSelesai.classList.add("d-none");
+    boxBulan.classList.add("d-none");
+    boxTahun.classList.add("d-none");
+
+    if (tipe === "harian") {
+      boxHarian.classList.remove("d-none");
+    } else if (tipe === "mingguan") {
+      boxMingguanMulai.classList.remove("d-none");
+      boxMingguanSelesai.classList.remove("d-none");
+    } else if (tipe === "bulanan") {
+      boxBulan.classList.remove("d-none");
+      boxTahun.classList.remove("d-none");
+    }
+  }
+
+  function muatDataRekap() {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const tbody = document.getElementById("tbodyRekap");
+    tbody.innerHTML = "<tr><td colspan='11' class='text-center py-4 text-muted'><span class='spinner-border spinner-border-sm me-2'></span>Mengambil data riwayat absensi .....</td></tr>";
+
+    const filterObj = {
+      tipe: tipe,
+      tanggal: document.getElementById("rekapTglHarian").value,
+      tglMulai: document.getElementById("rekapTglMulai").value,
+      tglSelesai: document.getElementById("rekapTglSelesai").value,
+      bulan: document.getElementById("rekapBulan").value,
+      tahun: document.getElementById("rekapTahun").value
+    };
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          currentRekapRecords = res.records || [];
+          renderRekapTable(currentRekapRecords, res.statistik, res.rekapKetidakhadiranGuru);
+        } else {
+          tbody.innerHTML = `<tr><td colspan='11' class='text-center py-4 text-danger'><i class='bi bi-x-circle me-1'></i> ${res.message || 'Gagal memuat rekap'}</td></tr>`;
+        }
+      })
+      .withFailureHandler(function(err) {
+        tbody.innerHTML = `<tr><td colspan='11' class='text-center py-4 text-danger'><i class='bi bi-exclamation-triangle me-1'></i> Terjadi error: ${err.message}</td></tr>`;
+      })
+      .getRekapData(filterObj);
+  }
+
+  function formatTglPendek(str) {
+    if (!str) return "-";
+    const s = String(str).trim();
+    const match = s.match(/^(\d{1,2}\/\d{1,2}\/\d{4})/);
+    if (match) return match[1];
+    const matchIso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (matchIso) {
+      const p = matchIso[1].split("-");
+      return p[2] + "/" + p[1] + "/" + p[0];
+    }
+    return s.split(" ")[0];
+  }
+
+  function formatHariTglIndo(hari, tgl) {
+    if (!tgl) return hari || "-";
+    const strTgl = String(tgl).trim();
+    const bulanIndo = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    for (let i = 0; i < bulanIndo.length; i++) {
+      if (strTgl.includes(bulanIndo[i])) {
+        return strTgl;
+      }
+    }
+    const d = new Date(strTgl);
+    if (!isNaN(d.getTime())) {
+      const arrHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+      const h = (hari && hari.trim() && hari !== "-") ? hari.trim() : arrHari[d.getDay()];
+      return `${h}, ${d.getDate()} ${bulanIndo[d.getMonth()]} ${d.getFullYear()}`;
+    }
+    return (hari ? hari + ", " : "") + strTgl;
+  }
+
+  function kelompokkanRekapHarian(records) {
+    const groups = [];
+    const map = {};
+
+    records.forEach((r, idx) => {
+      const tglBersih = formatHariTglIndo(r.hari, r.tanggal);
+      const waktuBersih = formatTglPendek(r.timestamp);
+      const key = tglBersih + "___" + r.namaGuru;
+
+      if (!map[key]) {
+        map[key] = {
+          namaGuru: r.namaGuru,
+          statusKehadiran: r.statusKehadiran,
+          waktu: waktuBersih,
+          hariTanggal: tglBersih,
+          linkKehadiran: r.linkKehadiran,
+          items: []
+        };
+        groups.push(map[key]);
+      }
+
+      map[key].items.push({
+        no: idx + 1,
+        kelas: r.kelas,
+        jamAwal: r.jamAwal,
+        jamAkhir: r.jamAkhir,
+        mapel: r.mapel,
+        bentukPenugasan: r.bentukPenugasan,
+        catatan: r.catatan,
+        originalRecord: r
+      });
+    });
+
+    return groups;
+  }
+
+  function kelompokkanRekapGuruMingguanBulanan(records) {
+    const teacherDays = {};
+    const guruMap = {};
+
+    records.forEach(r => {
+      const tglBersih = formatTglPendek(r.timestamp) || r.tanggal;
+      const key = tglBersih + "___" + r.namaGuru;
+      const namaGuru = r.namaGuru;
+      const status = r.statusKehadiran;
+
+      if (!guruMap[namaGuru]) {
+        guruMap[namaGuru] = {
+          namaGuru: namaGuru,
+          sakit: 0,
+          izin: 0,
+          tugas: 0,
+          alpa: 0,
+          totalHari: 0,
+          detailHari: []
+        };
+      }
+
+      if (!teacherDays[key]) {
+        teacherDays[key] = true;
+        const s = status.toLowerCase();
+        let displayLabel = "Tanpa Ket.";
+        if (s.includes("sakit")) {
+          guruMap[namaGuru].sakit++;
+          displayLabel = "Sakit";
+        } else if (s.includes("izin")) {
+          guruMap[namaGuru].izin++;
+          displayLabel = "Izin";
+        } else if (s.includes("tugas")) {
+          guruMap[namaGuru].tugas++;
+          displayLabel = "Tugas Dinas";
+        } else {
+          guruMap[namaGuru].alpa++;
+        }
+        guruMap[namaGuru].totalHari++;
+        guruMap[namaGuru].detailHari.push(`${tglBersih} (${displayLabel})`);
+      }
+    });
+
+    return Object.values(guruMap);
+  }
+
+  function renderRekapTable(records, stats, serverRekapGuru) {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const thead = document.getElementById("theadRekap");
+    const tbody = document.getElementById("tbodyRekap");
+    const labelStat = document.getElementById("labelStatTotal");
+    
+    if (labelStat) labelStat.textContent = "Total Absensi";
+
+    let totalStats = stats;
+    if (!totalStats || !totalStats.total) {
+      const tDays = {};
+      let sCount = 0, iCount = 0, tCount = 0, aCount = 0;
+      records.forEach(r => {
+        const k = (r.tanggal || "") + "___" + r.namaGuru;
+        if (!tDays[k]) {
+          tDays[k] = true;
+          const st = (r.statusKehadiran || "").toLowerCase();
+          if (st.includes("sakit")) sCount++;
+          else if (st.includes("izin")) iCount++;
+          else if (st.includes("tugas")) tCount++;
+          else aCount++;
+        }
+      });
+      totalStats = {
+        total: Object.keys(tDays).length,
+        sakit: sCount,
+        izin: iCount,
+        tugas: tCount,
+        alpa: aCount
+      };
+    }
+
+    document.getElementById("statTotal").textContent = totalStats.total || 0;
+    document.getElementById("statSakit").textContent = totalStats.sakit || 0;
+    document.getElementById("statIzin").textContent = totalStats.izin || 0;
+    document.getElementById("statTugas").textContent = totalStats.tugas || 0;
+    document.getElementById("statAlpa").textContent = totalStats.alpa || 0;
+
+    if (!records || records.length === 0) {
+      tbody.innerHTML = "<tr><td colspan='11' class='text-center py-4 text-muted'>Tidak ada data absensi untuk periode filter yang dipilih.</td></tr>";
+      return;
+    }
+
+    if (tipe === "mingguan" || tipe === "bulanan") {
+      thead.innerHTML = `
+        <tr>
+          <th class="text-center" style="width: 45px;">#</th>
+          <th>Nama Guru</th>
+          <th class="text-center" style="width: 110px;">Sakit (Hari)</th>
+          <th class="text-center" style="width: 110px;">Izin (Hari)</th>
+          <th class="text-center" style="width: 130px;">Tugas Dinas (Hari)</th>
+          <th class="text-center" style="width: 140px;">Tanpa Keterangan (Hari)</th>
+          <th class="text-center" style="width: 130px;">Total Absensi (Hari)</th>
+          <th>Rincian Tanggal & Keterangan</th>
+        </tr>
+      `;
+
+      const listGuruRekap = (serverRekapGuru && serverRekapGuru.length > 0)
+        ? serverRekapGuru 
+        : kelompokkanRekapGuruMingguanBulanan(records);
+
+      let rowsHtml = "";
+      listGuruRekap.forEach((g, idx) => {
+        rowsHtml += `
+          <tr>
+            <td class="text-center font-monospace">${idx + 1}</td>
+            <td class="fw-bold text-primary">${g.namaGuru}</td>
+            <td class="text-center"><span class="badge bg-warning text-dark px-2">${g.sakit || 0}</span></td>
+            <td class="text-center"><span class="badge bg-info text-dark px-2">${g.izin || 0}</span></td>
+            <td class="text-center"><span class="badge bg-primary px-2">${g.tugas || 0}</span></td>
+            <td class="text-center"><span class="badge bg-danger px-2">${g.alpa || 0}</span></td>
+            <td class="text-center fw-bold"><span class="badge bg-dark px-2.5 py-1">${g.totalHari || 0} Hari</span></td>
+            <td><small class="text-muted">${g.keterangan || (g.detailHari ? g.detailHari.join(", ") : '-')}</small></td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = rowsHtml;
+      return;
+    }
+
+    thead.innerHTML = `
+      <tr>
+        <th class="text-center" style="width: 40px;">#</th>
+        <th>Waktu</th>
+        <th>Hari / Tanggal</th>
+        <th>Nama Guru</th>
+        <th>Status</th>
+        <th class="text-center">Bukti Drive</th>
+        <th>Kelas</th>
+        <th>Jam Ke-</th>
+        <th>Mata Pelajaran</th>
+        <th>Bentuk Penugasan</th>
+        <th>Catatan</th>
+      </tr>
+    `;
+
+    const groupsHarian = kelompokkanRekapHarian(records);
+    let rowsHtml = "";
+
+    groupsHarian.forEach(group => {
+      const spanCount = group.items.length;
+      let badgeCls = "badge-alpa";
+      const s = group.statusKehadiran.toLowerCase();
+      if (s.includes("sakit")) badgeCls = "badge-sakit";
+      else if (s.includes("izin")) badgeCls = "badge-izin";
+      else if (s.includes("tugas")) badgeCls = "badge-tugas";
+
+      let linkHtml = "-";
+      if (group.linkKehadiran && group.linkKehadiran !== "-" && group.linkKehadiran.startsWith("http")) {
+        linkHtml = `<a href="${group.linkKehadiran}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:0.75rem;"><i class="bi bi-file-earmark-text me-1"></i>Bukti Drive</a>`;
+      }
+
+      group.items.forEach((item, itemIdx) => {
+        if (itemIdx === 0) {
+          rowsHtml += `
+            <tr>
+              <td class="text-center font-monospace">${item.no}</td>
+              <td rowspan="${spanCount}" class="merged-cell"><small class="text-muted font-monospace">${group.waktu}</small></td>
+              <td rowspan="${spanCount}" class="merged-cell"><strong>${group.hariTanggal}</strong></td>
+              <td rowspan="${spanCount}" class="merged-cell fw-semibold text-primary">${group.namaGuru}</td>
+              <td rowspan="${spanCount}" class="merged-cell"><span class="badge-status ${badgeCls}">${group.statusKehadiran}</span></td>
+              <td rowspan="${spanCount}" class="merged-cell text-center">${linkHtml}</td>
+              <td><span class="badge bg-light text-dark border">${item.kelas}</span></td>
+              <td><small>${item.jamAwal} s/d ${item.jamAkhir}</small></td>
+              <td>${item.mapel}</td>
+              <td><small>${item.bentukPenugasan || '-'}</small></td>
+              <td><small class="text-muted">${item.catatan || '-'}</small></td>
+            </tr>
+          `;
+        } else {
+          rowsHtml += `
+            <tr>
+              <td class="text-center font-monospace">${item.no}</td>
+              <td><span class="badge bg-light text-dark border">${item.kelas}</span></td>
+              <td><small>${item.jamAwal} s/d ${item.jamAkhir}</small></td>
+              <td>${item.mapel}</td>
+              <td><small>${item.bentukPenugasan || '-'}</small></td>
+              <td><small class="text-muted">${item.catatan || '-'}</small></td>
+            </tr>
+          `;
+        }
+      });
+    });
+
+    tbody.innerHTML = rowsHtml;
+  }
+
+  function getLabelPeriodeAktif() {
+    const tipe = document.getElementById("filterRekapTipe").value;
+    if (tipe === "harian") {
+      const rawTgl = document.getElementById("rekapTglHarian").value;
+      return "Harian: " + (rawTgl ? formatHariTglIndo("", rawTgl) : "Hari Ini");
+    } else if (tipe === "mingguan") {
+      const m1 = document.getElementById("rekapTglMulai").value;
+      const m2 = document.getElementById("rekapTglSelesai").value;
+      return "Mingguan: " + (m1 ? formatTglPendek(m1) : "-") + " s/d " + (m2 ? formatTglPendek(m2) : "-");
+    } else if (tipe === "bulanan") {
+      const namaBulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      const bIdx = parseInt(document.getElementById("rekapBulan").value, 10) - 1;
+      return "Bulanan: " + namaBulan[bIdx] + " " + document.getElementById("rekapTahun").value;
+    }
+    return "Seluruh Data Rekap";
+  }
+
+  function handleCetakPDF() {
+    if (!currentRekapRecords || currentRekapRecords.length === 0) {
+      alert("Belum ada data rekap yang dimuat atau data kosong. Silakan klik tombol 'Tampilkan' terlebih dahulu sebelum mencetak!");
+      return;
+    }
+
+    const printArea = document.getElementById("printArea");
+    const tipe = document.getElementById("filterRekapTipe").value;
+    const periodeLabel = getLabelPeriodeAktif();
+    const waktuCetak = new Date().toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" }).replace(" pukul", " pukul");
+    const petugas = currentUserSession ? (currentUserSession.nama + " (" + currentUserSession.role.toUpperCase() + ")") : "Petugas Piket";
+
+    const teacherDays = {};
+    let sakit = 0, izin = 0, tugas = 0, alpa = 0;
+    currentRekapRecords.forEach(r => {
+      const k = (r.tanggal || "") + "___" + r.namaGuru;
+      if (!teacherDays[k]) {
+        teacherDays[k] = true;
+        const s = (r.statusKehadiran || "").toLowerCase();
+        if (s.includes("sakit")) sakit++;
+        else if (s.includes("izin")) izin++;
+        else if (s.includes("tugas")) tugas++;
+        else alpa++;
+      }
+    });
+    const totalAbsen = Object.keys(teacherDays).length;
+
+    let contentHtml = `
+      <div class="print-kop">
+        <h2>LAPORAN REKAPITULASI ABSENSI GURU</h2>
+        <h3>SMP NEGERI 1 CIRANJANG</h3>
+        <p>Sistem Informasi Manajemen Absensi Guru</p>
+      </div>
+
+      <div class="print-meta-box">
+        <div>
+          <strong>Periode Laporan:</strong> ${periodeLabel}<br>
+          <strong>Dicetak Oleh:</strong> ${petugas}
+        </div>
+        <div style="text-align: right;">
+          <strong>Waktu Cetak:</strong> ${waktuCetak}<br>
+          <strong>Total Entri:</strong> ${currentRekapRecords.length} baris penugasan
+        </div>
+      </div>
+
+      <div class="print-stat-box">
+        <span><strong>Total Absensi:</strong> ${totalAbsen}</span>
+        <span><strong>Sakit:</strong> ${sakit}</span>
+        <span><strong>Izin:</strong> ${izin}</span>
+        <span><strong>Tugas Dinas:</strong> ${tugas}</span>
+        <span><strong>Tanpa Keterangan:</strong> ${alpa}</span>
+      </div>
+    `;
+
+    if (tipe === "mingguan" || tipe === "bulanan") {
+      const rekapGuruList = kelompokkanRekapGuruMingguanBulanan(currentRekapRecords);
+      let rowsGuru = "";
+      rekapGuruList.forEach((g, idx) => {
+        rowsGuru += `
+          <tr>
+            <td class="center">${idx + 1}</td>
+            <td><strong>${g.namaGuru}</strong></td>
+            <td class="center">${g.sakit || 0}</td>
+            <td class="center">${g.izin || 0}</td>
+            <td class="center">${g.tugas || 0}</td>
+            <td class="center">${g.alpa || 0}</td>
+            <td class="center"><strong>${g.totalHari || 0} Hari</strong></td>
+            <td>${g.detailHari ? g.detailHari.join(", ") : "-"}</td>
+          </tr>
+        `;
+      });
+
+      contentHtml += `
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width: 30px;">No</th>
+              <th>Nama Guru</th>
+              <th style="width: 50px;">Sakit</th>
+              <th style="width: 50px;">Izin</th>
+              <th style="width: 50px;">Tugas Dinas</th>
+              <th style="width: 50px;">Tanpa Ket.</th>
+              <th style="width: 50px;">Total Hari</th>
+              <th style="width: 70px;">Rincian Tanggal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsGuru}
+          </tbody>
+        </table>
+      `;
+    } else {
+      const groups = kelompokkanRekapHarian(currentRekapRecords);
+      let tableRows = "";
+
+      groups.forEach(group => {
+        const span = group.items.length;
+        group.items.forEach((item, itemIdx) => {
+          if (itemIdx === 0) {
+            tableRows += `
+              <tr>
+                <td class="center">${item.no}</td>
+                <td rowspan="${span}">${group.waktu}</td>
+                <td rowspan="${span}">${group.hariTanggal}</td>
+                <td rowspan="${span}"><strong>${group.namaGuru}</strong></td>
+                <td rowspan="${span}" class="center">${group.statusKehadiran}</td>
+                <td class="center">${item.kelas}</td>
+                <td class="center">${item.jamAwal.replace('Jam Ke-', '')} - ${item.jamAkhir.replace('Jam Ke-', '')}</td>
+                <td>${item.mapel}</td>
+                <td>${item.bentukPenugasan || '-'}</td>
+                <td>${item.catatan || '-'}</td>
+              </tr>
+            `;
+          } else {
+            tableRows += `
+              <tr>
+                <td class="center">${item.no}</td>
+                <td class="center">${item.kelas}</td>
+                <td class="center">${item.jamAwal.replace('Jam Ke-', '')} - ${item.jamAkhir.replace('Jam Ke-', '')}</td>
+                <td>${item.mapel}</td>
+                <td>${item.bentukPenugasan || '-'}</td>
+                <td>${item.catatan || '-'}</td>
+              </tr>
+            `;
+          }
+        });
+      });
+
+      contentHtml += `
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width: 25px;">No</th>
+              <th style="width: 75px;">Waktu</th>
+              <th style="width: 100px;">Hari/Tanggal</th>
+              <th>Nama Guru</th>
+              <th style="width: 70px;">Status</th>
+              <th style="width: 45px;">Kelas</th>
+              <th style="width: 55px;">Jam Ke-</th>
+              <th>Mata Pelajaran</th>
+              <th>Bentuk Penugasan</th>
+              <th>Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    contentHtml += `
+      <div class="print-signature">
+        <div class="sign-col">
+          <p>Mengetahui,<br><strong>Kepala Sekolah</strong></p>
+          <div class="sign-space"></div>
+          <p><strong><u>Dra. YETTY NURHAYATI, S.Pd., M.Pd.</u></strong><br>NIP. 196709101994032006</p>
+        </div>
+        <div class="sign-col">
+          <p>Petugas Penanggung Jawab,<br><strong>${petugas}</strong></p>
+          <div class="sign-space"></div>
+          <p><u>___________________________</u><br>NIP/NUPTK. ........................................</p>
+        </div>
+      </div>
+    `;
+
+    printArea.innerHTML = contentHtml;
+
+    setTimeout(function() {
+      window.print();
+    }, 200);
+  }
+
+  // OPSI 2: UNDUH BENTUK XLSX
+  function handleUnduhXLSX() {
+    if (!currentRekapRecords || currentRekapRecords.length === 0) {
+      alert("Belum ada data rekap yang dimuat. Klik 'Tampilkan' terlebih dahulu!");
+      return;
+    }
+
+    const periodeLabel = getLabelPeriodeAktif().replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = "Rekap_Absensi_Guru_" + periodeLabel + ".xlsx";
+
+    let excelContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Rekap</x:Name>
+                <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          th { background-color: #1e40af; color: #ffffff; font-weight: bold; border: 1px solid #000000; text-align: center; }
+          td { border: 1px solid #d4d4d4; }
+          .center { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h3>LAPORAN REKAPITULASI ABSENSI GURU (SHEET REKAP)</h3>
+        <p><strong>Periode:</strong> ${getLabelPeriodeAktif()} | <strong>Diunduh Oleh:</strong> ${currentUserSession ? currentUserSession.nama : 'Petugas'}</p>
+        <table border="1">
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Timestamp</th>
+              <th>Hari</th>
+              <th>Tanggal</th>
+              <th>Nama Guru</th>
+              <th>Status Kehadiran</th>
+              <th>Link Kehadiran</th>
+              <th>Kelas</th>
+              <th>Jam Awal</th>
+              <th>Jam Akhir</th>
+              <th>Mata Pelajaran</th>
+              <th>Bentuk Penugasan</th>
+              <th>Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    currentRekapRecords.forEach((r, idx) => {
+      excelContent += `
+        <tr>
+          <td class="center">${idx + 1}</td>
+          <td>${r.timestamp}</td>
+          <td>${r.hari}</td>
+          <td>${r.tanggal}</td>
+          <td>${r.namaGuru}</td>
+          <td class="center">${r.statusKehadiran}</td>
+          <td>${r.linkKehadiran || '-'}</td>
+          <td class="center">${r.kelas}</td>
+          <td class="center">${r.jamAwal}</td>
+          <td class="center">${r.jamAkhir}</td>
+          <td>${r.mapel}</td>
+          <td>${r.bentukPenugasan || '-'}</td>
+          <td>${r.catatan || '-'}</td>
+        </tr>
+      `;
+    });
+
+    excelContent += `
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelContent], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8" });
+    const downloadLink = document.createElement("a");
+    downloadLink.href = URL.createObjectURL(blob);
+    downloadLink.download = filename;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  }
+
+  function handleGantiPasswordSubmit(event) {
+    event.preventDefault();
+    const alertPass = document.getElementById("alertPassword");
+    const btnPass = document.getElementById("btnGantiPass");
+    alertPass.classList.add("d-none");
+
+    const targetUser = document.getElementById("targetUserPassword").value;
+    const newPass = document.getElementById("newPasswordInput").value.trim();
+    const confirmPass = document.getElementById("confirmPasswordInput").value.trim();
+
+    if (!newPass || !confirmPass) {
+      alertPass.className = "alert alert-warning py-2 small";
+      alertPass.innerHTML = "Harap masukkan password baru dan konfirmasi!";
+      alertPass.classList.remove("d-none");
+      return;
+    }
+
+    if (newPass !== confirmPass) {
+      alertPass.className = "alert alert-danger py-2 small";
+      alertPass.innerHTML = "Password baru dan Konfirmasi Password tidak cocok!";
+      alertPass.classList.remove("d-none");
+      return;
+    }
+
+    if (newPass.length < 4) {
+      alertPass.className = "alert alert-warning py-2 small";
+      alertPass.innerHTML = "Password minimal 4 karakter!";
+      alertPass.classList.remove("d-none");
+      return;
+    }
+
+    btnPass.disabled = true;
+    btnPass.innerHTML = "<span class='spinner-border spinner-border-sm me-2'></span>Menyimpan Password...";
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btnPass.disabled = false;
+        btnPass.innerHTML = "<i class='bi bi-check-circle me-1'></i> Simpan Password Baru";
+
+        if (res && res.success) {
+          alertPass.className = "alert alert-success py-2 small";
+          alertPass.innerHTML = "<i class='bi bi-check-circle-fill me-1'></i> " + res.message;
+          alertPass.classList.remove("d-none");
+          document.getElementById("formGantiPass").reset();
+        } else {
+          alertPass.className = "alert alert-danger py-2 small";
+          alertPass.innerHTML = "<i class='bi bi-x-circle me-1'></i> " + (res.message || "Gagal mengganti password.");
+          alertPass.classList.remove("d-none");
+        }
+      })
+      .withFailureHandler(function(err) {
+        btnPass.disabled = false;
+        btnPass.innerHTML = "<i class='bi bi-check-circle me-1'></i> Simpan Password Baru";
+        alertPass.className = "alert alert-danger py-2 small";
+        alertPass.innerHTML = "<i class='bi bi-exclamation-octagon me-1'></i> Error: " + err.message;
+        alertPass.classList.remove("d-none");
+      })
+      .gantiPassword(currentUserSession.role, targetUser, newPass);
+  }
+</script>
